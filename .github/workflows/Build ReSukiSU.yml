@@ -524,8 +524,8 @@ jobs:
             export CLANG_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928"
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             
-            # 🎯 СОЗДАЕМ УМНЫЙ DTC-ХАК
-            echo "🚀 Создаем обертку для DTC для пропуска старых чипов..."
+            # 🎯 СОЗДАЕМ УМНЫЙ DTC-ХАК С ГЕНЕРАЦИЕЙ ВАЛИДНЫХ ЗАГЛУШЕК
+            echo "🚀 Создаем обертку для DTC для генерации мини-DTB..."
             mkdir -p $GITHUB_WORKSPACE/fake_bin
             REAL_DTC="$TOOLS_DIR/bin/dtc"
             FAKE_DTC="$GITHUB_WORKSPACE/fake_bin/dtc"
@@ -535,12 +535,11 @@ jobs:
             ARGS="$@"
             REAL_DTC_PATH="/home/runner/work/OnePlus-Actions/OnePlus-Actions/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
             
-            # Проверяем, относится ли компиляция к sm8650 или pineapple
+            # Если в аргументах есть sm8650 или pineapple — компилируем оригинальное дерево
             if [[ "$ARGS" =~ "sm8650" || "$ARGS" =~ "pineapple" ]]; then
-                # Запускаем реальный компилятор
                 exec "$REAL_DTC_PATH" "$@"
             else
-                # Если это старый процессор, ищем выходной файл (-o) и создаем пустышку
+                # Если это старый процессор, ищем выходной путь (-o)
                 out_file=""
                 while [[ $# -gt 0 ]]; do
                     if [[ "$1" == "-o" ]]; then
@@ -549,9 +548,11 @@ jobs:
                     fi
                     shift
                 done
+                
+                # Вместо пустого файла генерируем валидный минимальный бинарник DTB
                 if [ -n "$out_file" ]; then
                     mkdir -p "$(dirname "$out_file")"
-                    echo -n "" > "$out_file"
+                    echo '/dts-v1/; / { };' | "$REAL_DTC_PATH" -I dts -O dtb -o "$out_file" 2>/dev/null
                 fi
                 exit 0
             fi
@@ -559,13 +560,13 @@ jobs:
             
             chmod +x $FAKE_DTC
             
-            # Добавляем нашу фейковую папку в самый приоритет PATH перед всеми
+            # Выставляем наивысший приоритет для нашей фейковой папки бинарников
             export PATH="$GITHUB_WORKSPACE/fake_bin:/usr/lib/ccache:$CLANG_DIR/bin:$TOOLS_DIR/bin:$PATH"
             
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
 
-            # Запуск чистой сборки
+            # Запуск компиляции
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
