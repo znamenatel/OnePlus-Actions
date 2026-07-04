@@ -524,16 +524,32 @@ jobs:
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             
-            # 1. Генерация базовой конфигурации
-            make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip HOSTCC=clang HOSTCXX=clang++ HOSTLD=ld.lld RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole KCFLAGS+=-O2 gki_defconfig
-            
-            # 2. Сборка ТОЛЬКО Image, жестко заблокировав автоматический вызов dtbs
-            echo "🔨 Сборка чистого Image ядра..."
-            make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip HOSTCC=clang HOSTCXX=clang++ HOSTLD=ld.lld RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole KCFLAGS+=-O2 dtbs= Image
-            
-            # 3. Таргетированная сборка только нужного дерева под Snapdragon 8 Gen 3 (sm8650)
-            echo "🔨 Сборка целевого дерева устройств (sm8650)..."
-            make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip HOSTCC=clang HOSTCXX=clang++ HOSTLD=ld.lld RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole KCFLAGS+=-O2 qcom/sm8650.dtb
+            # Удаляем проблемные конфигурации sm8550 из Makefile, чтобы сборщик их полностью проигнорировал
+            echo "✂️ Исключаем sm8550 из конфигурации сборки..."
+            sed -i '/sm8550/d' arch/arm64/boot/dts/qcom/Makefile
+
+            # Возвращаем стандартную монолитную сборку, теперь она не споткнется о старый чип
+            make -j$(nproc --all) \
+              O=out \
+              ARCH=arm64 \
+              LLVM=1 \
+              LLVM_IAS=1 \
+              CROSS_COMPILE=aarch64-linux-gnu \
+              CC="ccache clang" \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              READELF=llvm-readelf \
+              STRIP=llvm-strip \
+              HOSTCC=clang \
+              HOSTCXX=clang++ \
+              HOSTLD=ld.lld \
+              RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+              PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+              KCFLAGS+=-O2 \
+              gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
