@@ -520,22 +520,26 @@ jobs:
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86/bin:$PATH" 
-            sudo apt install libelf-dev
+            # Экспортируем пути ко ВСЕМ тулчейнам (Clang, LLVM и сопутствующим утилитам сборки) прямо в переменную PATH
+            export CLANG_BIN="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin"
+            export TOOL_BIN="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86/bin"
+            export PATH="/usr/lib/ccache:$CLANG_BIN:$TOOL_BIN:$PATH"
             
+            sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform
             
-            # Безопасная чистка: обрабатываем только папки dts, не трогая системные Makefile ядра
-            echo "🎯 Фильтруем DTS файлы только для sm8650..."
-            find . -type d \( -name "dts" -o -name "dts-prod" \) | while read -r dts_dir; do
-                if [ -f "$dts_dir/Makefile" ]; then
-                    sed -i '/\.dtb/ { /sm8650/!d }' "$dts_dir/Makefile"
-                fi
-                find "$dts_dir" -name "Makefile" -exec sed -i '/\.dtb/ { /sm8650/!d }' {} +
-            done
+            # Точечно фильтруем только основные сборочные файлы DTS Qualcomm, чтобы не трогать системные Makefile
+            echo "🎯 Фильтруем файлы конфигурации Qualcomm плат..."
+            [ -f "arch/arm64/boot/dts/qcom/Makefile" ] && sed -i '/\.dtb/ { /sm8650/!d }' arch/arm64/boot/dts/qcom/Makefile
+            
+            # Если исходники Qualcomm лежат в отдельном vendor-репозитории
+            if [ -d "vendor/qcom/proprietary/devicetree/qcom" ]; then
+               find vendor/qcom/proprietary/devicetree/qcom -name "Makefile" -exec sed -i '/\.dtb/ { /sm8650/!d }' {} +
+            fi
 
             cd common
 
+            # Запуск чистой сборки со строгим указанием путей к утилитам через абсолютные переменные
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
@@ -544,15 +548,15 @@ jobs:
               CROSS_COMPILE=aarch64-linux-gnu \
               CC="ccache clang" \
               LD=ld.lld \
-              AR=llvm-ar \
-              NM=llvm-nm \
-              OBJCOPY=llvm-objcopy \
-              OBJDUMP=llvm-objdump \
-              READELF=llvm-readelf \
-              STRIP=llvm-strip \
-              HOSTCC=clang \
-              HOSTCXX=clang++ \
-              HOSTLD=ld.lld \
+              AR="$CLANG_BIN/llvm-ar" \
+              NM="$CLANG_BIN/llvm-nm" \
+              OBJCOPY="$CLANG_BIN/llvm-objcopy" \
+              OBJDUMP="$CLANG_BIN/llvm-objdump" \
+              READELF="$CLANG_BIN/llvm-readelf" \
+              STRIP="$CLANG_BIN/llvm-strip" \
+              HOSTCC="$CLANG_BIN/clang" \
+              HOSTCXX="$CLANG_BIN/clang++" \
+              HOSTLD="$CLANG_BIN/ld.lld" \
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
               KCFLAGS+=-O2 \
