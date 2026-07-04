@@ -524,11 +524,9 @@ jobs:
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             
-            # Удаляем проблемные конфигурации sm8550 из Makefile, чтобы сборщик их полностью проигнорировал
             echo "✂️ Исключаем sm8550 из конфигурации сборки..."
             sed -i '/sm8550/d' arch/arm64/boot/dts/qcom/Makefile
 
-            # Возвращаем стандартную монолитную сборку, теперь она не споткнется о старый чип
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
