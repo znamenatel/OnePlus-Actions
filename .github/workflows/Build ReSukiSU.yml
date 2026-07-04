@@ -520,36 +520,58 @@ jobs:
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            # Настройка путей тулчейна и утилит
+            # 1. Настройка базовых путей тулчейна
             export CLANG_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928"
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             
-            # Создаем временную папку для ссылок, чтобы система сборки гарантированно видела llvm-ar и llvm-nm
+            sudo apt install libelf-dev
+
+            # 2. Создаем изолированную папку для безопасного перехвата DTC
+            echo "🛠️ Создаем глобальный перехватчик DTC..."
+            mkdir -p $GITHUB_WORKSPACE/fake_bin
+            
+            # Сохраняем оригинальный компилятор, если еще не сохранили
+            if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
+                mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
+            fi
+            
+            REAL_DTC_BIN="$TOOLS_DIR/bin/dtc.orig"
+
+            # Создаем неуязвимую однострочную обертку dtc (без cat << EOF, ломающего YAML)
+            echo '#!/bin/bash' > $GITHUB_WORKSPACE/fake_bin/dtc
+            echo 'if echo "$@" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo "    exec $REAL_DTC_BIN \"\$@\"" >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo 'else' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '    out_file=""' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '    while [ "$#" -gt 0 ]; do' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '        case "$1" in -o) out_file="$2"; shift 2 ;; *) shift ;; esac' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '    done' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '    if [ -n "$out_file" ]; then' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '        mkdir -p "$(dirname "$out_file")"' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo "        echo '/dts-v1/; / {};' | $REAL_DTC_BIN -I dts -O dtb -o \"\$out_file\" >/dev/null 2>&1" >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '    fi' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo '    exit 0' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            echo 'fi' >> $GITHUB_WORKSPACE/fake_bin/dtc
+            
+            chmod +x $GITHUB_WORKSPACE/fake_bin/dtc
+
+            # Раскидываем готовую обертку по путям репозитория
+            cp $GITHUB_WORKSPACE/fake_bin/dtc $TOOLS_DIR/bin/dtc 2>/dev/null || true
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+            mkdir -p common/scripts/dtc
+            cp $GITHUB_WORKSPACE/fake_bin/dtc common/scripts/dtc/dtc 2>/dev/null || true
+            
+            # 3. Настройка переменных окружения (fake_bin в приоритете)
             mkdir -p $GITHUB_WORKSPACE/bin_tools
             ln -sf $CLANG_DIR/bin/llvm-ar $GITHUB_WORKSPACE/bin_tools/llvm-ar
             ln -sf $CLANG_DIR/bin/llvm-nm $GITHUB_WORKSPACE/bin_tools/llvm-nm
             ln -sf $CLANG_DIR/bin/clang $GITHUB_WORKSPACE/bin_tools/clang
             
-            export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/bin_tools:$CLANG_DIR/bin:$TOOLS_DIR/bin:$PATH"
-            
-            sudo apt install libelf-dev
-            
-            # 🎯 ТОТАЛЬНАЯ ФИЛЬТРАЦИЯ ПЛАТФОРМ
-            echo "🚀 Тотальная очистка Makefile от старых SoC Qualcomm..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-            
-            # Обрабатываем абсолютно все Makefile, .mk, .config и Kbuild в каталогах dts и vendor
-            find arch/arm64/boot/dts/ vendor/qcom/ -type f \( -name "Makefile" -o -name "*.mk" -o -name "*.config" -o -name "Kbuild" \) 2>/dev/null | while read -r target_file; do
-                # 1. Закомментировать все строки с .dtb / .dtbo, в которых НЕТ sm8650 или pineapple
-                sed -i '/\.dtb/ { /sm8650/! { /pineapple/! s/^/#/ } }' "$target_file" 2>/dev/null || true
-                # 2. Закомментировать явные включения старых SoC (sm8150, sm8250, sm8350, sm8450, sm8550)
-                sed -i '/sm8[0-5]/ s/^/#/' "$target_file" 2>/dev/null || true
-            done
+            export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/fake_bin:$GITHUB_WORKSPACE/bin_tools:$CLANG_DIR/bin:$TOOLS_DIR/bin:$PATH"
 
-            # Переходим в директорию сборки
+            # 4. Запуск компиляции ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # Запуск компиляции ядра
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
