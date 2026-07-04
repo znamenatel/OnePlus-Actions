@@ -69,12 +69,11 @@ on:
         required: true
         type: choice
         options:
-          - 'android16'
           - 'android15'
           - 'android14'
           - 'android13'
           - 'android12'
-        default: 'android14'
+        default: 'android15'
         
       KERNEL_VERSION:
         description: "内核版本"
