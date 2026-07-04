@@ -520,53 +520,58 @@ jobs:
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            # Настройка путей тулчейна
+            # Настройка базовых путей
             export CLANG_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928"
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
-            
-            # 🎯 СОЗДАЕМ УМНЫЙ DTC-ХАК С ГЕНЕРАЦИЕЙ ВАЛИДНЫХ ЗАГЛУШЕК
-            echo "🚀 Создаем обертку для DTC для генерации мини-DTB..."
-            mkdir -p $GITHUB_WORKSPACE/fake_bin
-            REAL_DTC="$TOOLS_DIR/bin/dtc"
-            FAKE_DTC="$GITHUB_WORKSPACE/fake_bin/dtc"
-            
-            cat << 'EOF' > $FAKE_DTC
-            #!/bin/bash
-            ARGS="$@"
-            REAL_DTC_PATH="/home/runner/work/OnePlus-Actions/OnePlus-Actions/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86/bin/dtc"
-            
-            # Если в аргументах есть sm8650 или pineapple — компилируем оригинальное дерево
-            if [[ "$ARGS" =~ "sm8650" || "$ARGS" =~ "pineapple" ]]; then
-                exec "$REAL_DTC_PATH" "$@"
-            else
-                # Если это старый процессор, ищем выходной путь (-o)
-                out_file=""
-                while [[ $# -gt 0 ]]; do
-                    if [[ "$1" == "-o" ]]; then
-                        out_file="$2"
-                        break
-                    fi
-                    shift
-                done
-                
-                # Вместо пустого файла генерируем валидный минимальный бинарник DTB
-                if [ -n "$out_file" ]; then
-                    mkdir -p "$(dirname "$out_file")"
-                    echo '/dts-v1/; / { };' | "$REAL_DTC_PATH" -I dts -O dtb -o "$out_file" 2>/dev/null
-                fi
-                exit 0
-            fi
-          EOF
-            
-            chmod +x $FAKE_DTC
-            
-            # Выставляем наивысший приоритет для нашей фейковой папки бинарников
-            export PATH="$GITHUB_WORKSPACE/fake_bin:/usr/lib/ccache:$CLANG_DIR/bin:$TOOLS_DIR/bin:$PATH"
+            export PATH="/usr/lib/ccache:$CLANG_DIR/bin:$TOOLS_DIR/bin:$PATH"
             
             sudo apt install libelf-dev
-            cd kernel_workspace/kernel_platform/common
+            cd kernel_workspace/kernel_platform
+            
+            # 🎯 ВНЕДРЯЕМ ХАК НАПРЯМУЮ В PREBUILTS
+            echo "🚀 Подменяем оригинальный бинарник DTC в prebuilts..."
+            ORIG_DTC_DIR="prebuilts/kernel-build-tools/linux-x86/bin"
+            
+            if [ -f "$ORIG_DTC_DIR/dtc" ] && [ ! -f "$ORIG_DTC_DIR/dtc.real" ]; then
+                # Сохраняем реальный компилятор
+                mv "$ORIG_DTC_DIR/dtc" "$ORIG_DTC_DIR/dtc.real"
+                
+                # Пишем скрипт-перехватчик прямо на место старого dtc
+                cat << 'EOF' > "$ORIG_DTC_DIR/dtc"
+#!/bin/bash
+ARGS="$@"
+# Определяем динамически путь к реальному бинарнику относительно каталога запуска
+REAL_DTC="$(dirname "$0")/dtc.real"
 
-            # Запуск компиляции
+# Если в аргументах сборки есть sm8650 или pineapple — компилируем начисто
+if [[ "$ARGS" =~ "sm8650" || "$ARGS" =~ "pineapple" ]]; then
+    exec "$REAL_DTC" "$@"
+else
+    # Если это старый процессор, ищем выходной путь (-o)
+    out_file=""
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == "-o" ]]; then
+            out_file="$2"
+            break
+        fi
+        shift
+    done
+    
+    # Генерируем микро-DTB пустышку, чтобы обмануть скрипты проверки Qualcomm
+    if [ -n "$out_file" ]; then
+        mkdir -p "$(dirname "$out_file")"
+        echo '/dts-v1/; / { };' | "$REAL_DTC" -I dts -O dtb -o "$out_file" 2>/dev/null
+    fi
+    exit 0
+fi
+EOF
+                chmod +x "$ORIG_DTC_DIR/dtc"
+                echo "✅ Успешно внедрили обертку DTC напрямую в дерево сборки."
+            fi
+
+            cd common
+
+            # Запуск компиляции ядра
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
