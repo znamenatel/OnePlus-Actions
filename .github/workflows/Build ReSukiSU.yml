@@ -1,4 +1,4 @@
-name: Build ReSukiSU
+name: Build ReSukiSU-gt5pro
 on:
   workflow_dispatch:
     inputs:
