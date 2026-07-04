@@ -371,10 +371,11 @@ jobs:
 
           echo "✅ 所有补丁应用完成"
 
-      - name: "⚙️ Apply SCHED Patch | 应用风驰补丁"
-        if: ${{ github.event.inputs.KERNEL_VERSION == '6.6' }}
+      - name: Apply SCHED Patch | 应用风驰补丁
+        if: ${{ github.event.inputs.FEIL != 'gt5pro' && false }}
         run: |
           cd kernel_workspace/kernel_platform/common
+          ...
 
           echo "⬇️ 正在拉取风驰补丁"
           if [ "${{ github.event.inputs.FEIL }}" == "oneplus_ace5_ultra" ] || [ "${{ github.event.inputs.FEIL }}" = "oneplus_ace5_ultra_b" ]; then
