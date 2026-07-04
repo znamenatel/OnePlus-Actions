@@ -520,13 +520,12 @@ jobs:
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            # Устанавливаем приоритет для ccache, Clang и утилит сборки AOSP
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86/bin:$PATH" 
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             
-            # Полный проброс переменных LLVM для исключения системных конфликтов Ubuntu
-            make -j$(nproc --all) \
+            # Переводим в 1 поток и включаем V=1, чтобы увидеть точную причину падения на DTB
+            make -j1 V=1 \
               ARCH=arm64 \
               LLVM=1 \
               LLVM_IAS=1 \
