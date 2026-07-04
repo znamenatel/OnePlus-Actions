@@ -523,16 +523,19 @@ jobs:
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86/bin:$PATH" 
             sudo apt install libelf-dev
             
-            # Переходим в корень репозитория платформы ядра, чтобы захватить все внешние DTS-папки Qualcomm
             cd kernel_workspace/kernel_platform
             
-            echo "🎯 Глобальная чистка: оставляем только sm8650 во ВСЕХ Makefile проекта..."
-            find . -name "Makefile" -exec sed -i '/\.dtb/ { /sm8650/!d }' {} +
+            # Безопасная чистка: обрабатываем только папки dts, не трогая системные Makefile ядра
+            echo "🎯 Фильтруем DTS файлы только для sm8650..."
+            find . -type d \( -name "dts" -o -name "dts-prod" \) | while read -r dts_dir; do
+                if [ -f "$dts_dir/Makefile" ]; then
+                    sed -i '/\.dtb/ { /sm8650/!d }' "$dts_dir/Makefile"
+                fi
+                find "$dts_dir" -name "Makefile" -exec sed -i '/\.dtb/ { /sm8650/!d }' {} +
+            done
 
-            # Возвращаемся в общую директорию ядра для запуска компиляции
             cd common
 
-            # Стандартная чистая сборка
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
