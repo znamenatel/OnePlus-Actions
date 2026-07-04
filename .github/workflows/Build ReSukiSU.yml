@@ -176,11 +176,10 @@ jobs:
           git config --global user.email "2210077278@qq.com"
           echo "✅ Git配置完成"
 
-      - name: "📦 Cache & Install Dependencies | 缓存 & 安装构建依赖"
-        uses: awalsh128/cache-apt-pkgs-action@latest 
-        with: 
-          packages: python3 git curl ccache libelf-dev build-essential flex bison libssl-dev libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk dos2unix clang lld
-          execute_install_scripts: true
+      - name: "📦 Install Dependencies | 安装构建依赖"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 git curl ccache libelf-dev build-essential flex bison libssl-dev libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk dos2unix clang lld
 
       - name: "💾 Restore ccache (With SUSFS) | 恢复ccache缓存 (With SUSFS)"
         if: ${{ github.event.inputs.SUSFS == 'On' }}
