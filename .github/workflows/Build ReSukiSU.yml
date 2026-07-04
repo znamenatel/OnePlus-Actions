@@ -524,29 +524,28 @@ jobs:
             export CLANG_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928"
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             
-            # Добавляем пути в PATH, чтобы clang и llvm- утилиты были доступны глобально
+            # Добавляем пути в PATH (включая дублирование llvm- линков для фикса llvm-ar/nm)
             export PATH="/usr/lib/ccache:$CLANG_DIR/bin:$TOOLS_DIR/bin:$PATH"
             
             sudo apt install libelf-dev
             
-            # 🎯 ФИЛЬТРАЦИЯ ПЛАТФОРМ ЧЕРЕЗ КОНФИГУРАЦИОННЫЕ ФАЙЛЫ (БЕЗ СЛОМАННОГО СИНТАКСИСА)
-            echo "🚀 Отключаем сборку старых SoC Qualcomm в конфигурационных файлах..."
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/arch/arm64/boot/dts/vendor/qcom
+            # 🎯 ДИНАМИЧЕСКАЯ ФИЛЬТРАЦИЯ ПЛАТФОРМ
+            echo "🚀 Ищем конфигурационные файлы SoC Qualcomm и отключаем старые платформы..."
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
             
-            # Находим корневые сборочные файлы платформ и комментируем строки, не относящиеся к sm8650/pineapple
-            if [ -f "Makefile" ]; then
-                # Комментируем сборку всех dtb, если в строке нет упоминания sm8650 или pineapple
-                sed -i '/dtb/ { /sm8650/! { /pineapple/! s/^/#/ } }' Makefile
-            fi
-            
-            # Если списки SoC подтягиваются из отдельных .mk или Кconfig файлов, подчищаем и их
-            find . -name "*.mk" -o -name "*.config" | while read -r cfg_file; do
-                sed -i '/sm8[0-5]/ s/^/#/' "$cfg_file" 2>/dev/null || true
+            # Находим все Makefile и .mk файлы, связанные с qcom девайсами, где бы они ни лежали
+            find . -type f \( -name "Makefile" -o -name "*.mk" -o -name "*.config" \) | grep -E "dts/vendor/qcom|dts/qcom|opensource/dt-bindings" | while read -r target_file; do
+                echo "📝 Обрабатываем файл: $target_file"
+                # Безопасно комментируем строки с dtb, если там нет sm8650 или pineapple
+                sed -i '/dtb/ { /sm8650/! { /pineapple/! s/^/#/ } }' "$target_file" 2>/dev/null || true
+                # Маскируем старые SoC в инклюдах и конфигах платформ
+                sed -i '/sm8[0-5]/ s/^/#/' "$target_file" 2>/dev/null || true
             done
 
+            # Переходим в директорию сборки
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # Запуск чистой компиляции ядра
+            # Запуск компиляции ядра с явным указанием путей к LLVM утилитам
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
@@ -554,6 +553,11 @@ jobs:
               LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CC="ccache clang" \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
               KCFLAGS+=-O2 \
