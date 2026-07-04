@@ -524,9 +524,11 @@ jobs:
             sudo apt install libelf-dev
             cd kernel_workspace/kernel_platform/common
             
-            echo "✂️ Исключаем sm8550 из конфигурации сборки..."
-            sed -i '/sm8550/d' arch/arm64/boot/dts/qcom/Makefile
+            # Оставляем в Makefile ТОЛЬКО целевой чип sm8650, удаляя все остальные старые платформы
+            echo "🎯 Фильтруем дерево устройств только для sm8650..."
+            sed -i '/\.dtb/ { /sm8650/!d }' arch/arm64/boot/dts/qcom/Makefile
 
+            # Запускаем стандартную чистую сборку
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
