@@ -237,7 +237,7 @@ jobs:
           mkdir kernel_workspace && cd kernel_workspace
 
           echo "🌐 正在初始化内核仓库..."
-        if [ "${{ github.event.inputs.FEIL }}" = "gt5pro" ]; then
+          if [ "${{ github.event.inputs.FEIL }}" = "gt5pro" ]; then
             repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m oneplus_12_b.xml --depth=1
           else
             repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
