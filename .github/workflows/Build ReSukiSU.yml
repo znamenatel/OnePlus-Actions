@@ -28,6 +28,7 @@ on:
         required: true
         type: choice
         options:
+          - 'gt5pro'
           - 'oneplus_13_b'
           - 'oneplus_13s_b'
           - 'oneplus_13t_b'
@@ -68,6 +69,7 @@ on:
         required: true
         type: choice
         options:
+          - 'android16'
           - 'android15'
           - 'android14'
           - 'android13'
@@ -581,7 +583,7 @@ jobs:
           echo "ARTIFACT_NAME=${FINAL_NAME}" >> $GITHUB_OUTPUT
 
       - name: "📤 Upload AnyKernel3 | 上传 AnyKernel3"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.set_name.outputs.ARTIFACT_NAME }}
           path: ./AnyKernel3/*
@@ -592,7 +594,7 @@ jobs:
           find -name crypto_zstdn.ko
           
       - name: "📤 Upload zram.ko | 上传 zram.ko"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.FEIL }}_zram.ko
           path: ./kernel_workspace/kernel_platform/common/out/drivers/block/zram/zram.ko
