@@ -522,13 +522,17 @@ jobs:
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86/bin:$PATH" 
             sudo apt install libelf-dev
-            cd kernel_workspace/kernel_platform/common
             
-            # Тотальная зачистка: находим ВСЕ Makefile в дереве устройств и оставляем только sm8650
-            echo "🎯 Фильтруем дерево устройств во всех каталогах только для sm8650..."
-            find arch/arm64/boot/dts/ -name "Makefile" -exec sed -i '/\.dtb/ { /sm8650/!d }' {} +
+            # Переходим в корень репозитория платформы ядра, чтобы захватить все внешние DTS-папки Qualcomm
+            cd kernel_workspace/kernel_platform
+            
+            echo "🎯 Глобальная чистка: оставляем только sm8650 во ВСЕХ Makefile проекта..."
+            find . -name "Makefile" -exec sed -i '/\.dtb/ { /sm8650/!d }' {} +
 
-            # Запускаем чистую монолитную сборку
+            # Возвращаемся в общую директорию ядра для запуска компиляции
+            cd common
+
+            # Стандартная чистая сборка
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
