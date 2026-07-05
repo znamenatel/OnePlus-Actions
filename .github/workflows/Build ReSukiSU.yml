@@ -664,7 +664,4 @@ jobs:
           ccache -s
           echo "✅ 内核编译完成"
 
-      - name: "📦 Prepare AnyKernel3 Flasher"
-        run: |
-          echo "Финишная прямая, собираем архив..."
-          # Здесь идет твоя логика упаковки AnyKernel3
+    
