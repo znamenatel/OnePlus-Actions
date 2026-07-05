@@ -87,7 +87,7 @@ jobs:
             echo '            break' >> "$TOOLS_DIR/bin/dtc"
             echo '        fi' >> "$TOOLS_DIR/bin/dtc"
             echo '        shift' >> "$TOOLS_DIR/bin/dtc"
-            done
+            echo '    done' >> "$TOOLS_DIR/bin/dtc"
             echo '    if [ -n "$out_file" ]; then' >> "$TOOLS_DIR/bin/dtc"
             echo '        mkdir -p "$(dirname "$out_file")"' >> "$TOOLS_DIR/bin/dtc"
             echo '        echo -e "/dts-v1/;\n/ {};" | "$REAL_DTC" -I dts -O dtb -o "$out_file" >/dev/null 2>&1' >> "$TOOLS_DIR/bin/dtc"
