@@ -470,11 +470,11 @@ jobs:
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            # 1. Устанавливаем полный пакет компилятора и утилит LLVM хоста
+            # 1. Установка утилит
             sudo apt update
             sudo apt install -y libelf-dev clang lld llvm ccache
 
-            # 2. Находим версию системного Clang и создаем жесткие симлинки без суффиксов
+            # 2. Настройка симлинков системного LLVM
             SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
             echo "🤖 Обнаружена системная версия LLVM/Clang: $SYS_LLVM_VER"
             
@@ -490,14 +490,13 @@ jobs:
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
 
-            # 3. Подготовка путей и создание скрипта-перехватчика DTC через простые echo
+            # 3. Перехватчик DTC (работает безупречно)
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             
             if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Железобетонная запись скрипта строка за строкой, без единой одинарной кавычки внутри значений
             echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
             echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
             echo 'if echo "$@" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
@@ -521,33 +520,9 @@ jobs:
             chmod +x "$TOOLS_DIR/bin/dtc"
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
 
-            # 4. Переходим в директорию ядра
+            # 4. Чистый запуск компиляции
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🔍 Полностью сбрасываем файлы к оригиналу перед применением чистой логики
-            git checkout fs/open.c fs/stat.c fs/namei.c fs/Makefile 2>/dev/null || true
-
-            # 🩹 Ювелирный точечный инжект SUSFS только для трех целевых файлов через CFLAGS_*.o
-            SUSFS_H_PATH=""
-            if [ -f "include/linux/susfs.h" ]; then
-              SUSFS_H_PATH="include/linux/susfs.h"
-            elif [ -f "../common/include/linux/susfs.h" ]; then
-              SUSFS_H_PATH="../common/include/linux/susfs.h"
-            else
-              FOUND_SUSFS=$(find . -name "susfs.h" -print -quit)
-              [ -n "$FOUND_SUSFS" ] && SUSFS_H_PATH="$FOUND_SUSFS"
-            fi
-
-            if [ -n "$SUSFS_H_PATH" ] && [ -f "fs/Makefile" ]; then
-              echo "🎯 Найдено: $SUSFS_H_PATH. Добавляем точечные флаги CFLAGS в fs/Makefile"
-              echo -e "\nCFLAGS_open.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
-              echo "CFLAGS_stat.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
-              echo "CFLAGS_namei.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
-            else
-              echo "⚠️ Предупреждение: не удалось добавить точечный инжект SUSFS флагов."
-            fi
-
-            # 5. Запуск чистой компиляции
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
