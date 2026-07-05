@@ -526,7 +526,7 @@ jobs:
 
             # 2. Находим версию системного Clang и создаем жесткие симлинки без суффиксов
             SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
-            echo "🤖 Обнаружена dynamic-версия LLVM/Clang: $SYS_LLVM_VER"
+            echo "🤖 Обнаружена системная версия LLVM/Clang: $SYS_LLVM_VER"
             
             mkdir -p $GITHUB_WORKSPACE/sys_bin
             ln -sf /usr/bin/clang-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/clang
@@ -540,14 +540,14 @@ jobs:
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
 
-            # 3. Безопасное развертывание умного скрипта DTC (без heredoc/EOF)
+            # 3. Подготовка путей и создание пуленепробиваемого скрипта-перехватчика DTC
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             
             if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Записываем скрипт через echo с экранированием, чтобы избежать ошибок синтаксиса YAML
+            # Записываем парсер аргументов с защитой от пустых выходов
             echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
             echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
             echo 'ARGS="$@"' >> "$TOOLS_DIR/bin/dtc"
@@ -555,8 +555,12 @@ jobs:
             echo '  exec "$REAL_DTC" "$@"' >> "$TOOLS_DIR/bin/dtc"
             echo 'else' >> "$TOOLS_DIR/bin/dtc"
             echo '  out_file=""' >> "$TOOLS_DIR/bin/dtc"
-            echo '  while [ "$#" -gt 0 ]; do' >> "$TOOLS_DIR/bin/dtc"
-            echo '    case "$1" in -o) out_file="$2"; shift 2 ;; *) shift ;; esac' >> "$TOOLS_DIR/bin/dtc"
+            echo '  args_arr=("$@")' >> "$TOOLS_DIR/bin/dtc"
+            echo '  for ((i=0; i<${#args_arr[@]}; i++)); do' >> "$TOOLS_DIR/bin/dtc"
+            echo '    if [ "${args_arr[i]}" = "-o" ]; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '      out_file="${args_arr[i+1]}"' >> "$TOOLS_DIR/bin/dtc"
+            echo '      break' >> "$TOOLS_DIR/bin/dtc"
+            echo '    fi' >> "$TOOLS_DIR/bin/dtc"
             echo '  done' >> "$TOOLS_DIR/bin/dtc"
             echo '  if [ -n "$out_file" ]; then' >> "$TOOLS_DIR/bin/dtc"
             echo '    mkdir -p "$(dirname "$out_file")"' >> "$TOOLS_DIR/bin/dtc"
@@ -566,9 +570,8 @@ jobs:
             echo 'fi' >> "$TOOLS_DIR/bin/dtc"
 
             chmod +x "$TOOLS_DIR/bin/dtc"
-            echo "🚀 Тулчейн DTC успешно модифицирован!"
+            echo "🚀 Парсер DTC пересобран на индексах массивов!"
 
-            # Экспортируем пути
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
 
             # 4. Переходим в директорию ядра и запускаем компиляцию
