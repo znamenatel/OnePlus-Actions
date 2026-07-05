@@ -574,10 +574,10 @@ jobs:
             # 4. Переходим в директорию ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🔍 Откатываем старые грязные инжекты в исходники, если они остались
+            # 🔍 Полностью сбрасываем Makefile и исходники к оригиналу перед применением чистой логики
             git checkout fs/open.c fs/stat.c fs/namei.c fs/Makefile 2>/dev/null || true
 
-            # 🩹 Изолированный проброс заголовка SUSFS исключительно для файлов fs/*
+            # 🩹 Ювелирный точечный инжект SUSFS только для трех целевых файлов
             SUSFS_H_PATH=""
             if [ -f "include/linux/susfs.h" ]; then
               SUSFS_H_PATH="include/linux/susfs.h"
@@ -589,11 +589,13 @@ jobs:
             fi
 
             if [ -n "$SUSFS_H_PATH" ] && [ -f "fs/Makefile" ]; then
-              echo "🎯 Найдено: $SUSFS_H_PATH. Добавляем локальный инжект в fs/Makefile"
-              # Вставляем cflags-y в самое начало fs/Makefile, чтобы флаг применился строго внутри подсистемы fs
-              sed -i "1iextra-y += \nccflags-y += -include \$(srctree)/$SUSFS_H_PATH" fs/Makefile
+              echo "🎯 Найдено: $SUSFS_H_PATH. Добавляем точечные флаги CFLAGS в fs/Makefile"
+              # Прописываем флаг -include персонально для каждого объекта сборки. Это НЕ затронет другие папки и файлы ядра.
+              echo -e "\nCFLAGS_open.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
+              echo "CFLAGS_stat.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
+              echo "CFLAGS_namei.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
             else
-              echo "⚠️ Заголовок susfs.h или fs/Makefile не найдены, локальный инжект пропущен."
+              echo "⚠️ Предупреждение: не удалось добавить точечный инжект SUSFS флагов."
             fi
 
             # 5. Запуск чистой компиляции
