@@ -574,27 +574,29 @@ jobs:
             # 4. Переходим в директорию ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🔍 Восстанавливаем оригинальные файлы (убираем прошлые инжекты, если они остались)
-            git checkout fs/open.c fs/stat.c fs/namei.c 2>/dev/null || true
+            # 🔍 Откатываем старые грязные инжекты в исходники, если они остались
+            git checkout fs/open.c fs/stat.c fs/namei.c fs/Makefile 2>/dev/null || true
 
-            # 🩹 Динамический поиск и глобальный проброс заголовка SUSFS
-            SUSFS_FLAG=""
+            # 🩹 Изолированный проброс заголовка SUSFS исключительно для файлов fs/*
+            SUSFS_H_PATH=""
             if [ -f "include/linux/susfs.h" ]; then
-              echo "🎯 Найдено: include/linux/susfs.h. Подключаем глобально."
-              SUSFS_FLAG="-include include/linux/susfs.h"
+              SUSFS_H_PATH="include/linux/susfs.h"
             elif [ -f "../common/include/linux/susfs.h" ]; then
-              echo "🎯 Найдено в родительском инклуде. Подключаем глобально."
-              SUSFS_FLAG="-include ../common/include/linux/susfs.h"
+              SUSFS_H_PATH="../common/include/linux/susfs.h"
             else
-              # Если патч положил файл в другое место, найдем его путь относительно текущей папки
               FOUND_SUSFS=$(find . -name "susfs.h" -print -quit)
-              if [ -n "$FOUND_SUSFS" ]; then
-                echo "🎯 Найдено по пути: $FOUND_SUSFS. Подключаем глобально."
-                SUSFS_FLAG="-include $FOUND_SUSFS"
-              fi
+              [ -n "$FOUND_SUSFS" ] && SUSFS_H_PATH="$FOUND_SUSFS"
             fi
 
-            # 5. Запуск компиляции с флагом глобального инклуда
+            if [ -n "$SUSFS_H_PATH" ] && [ -f "fs/Makefile" ]; then
+              echo "🎯 Найдено: $SUSFS_H_PATH. Добавляем локальный инжект в fs/Makefile"
+              # Вставляем cflags-y в самое начало fs/Makefile, чтобы флаг применился строго внутри подсистемы fs
+              sed -i "1iextra-y += \nccflags-y += -include \$(srctree)/$SUSFS_H_PATH" fs/Makefile
+            else
+              echo "⚠️ Заголовок susfs.h или fs/Makefile не найдены, локальный инжект пропущен."
+            fi
+
+            # 5. Запуск чистой компиляции
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
@@ -614,7 +616,7 @@ jobs:
               LD="ld.lld" \
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-              KCFLAGS="-O2 -Wno-error $SUSFS_FLAG" \
+              KCFLAGS="-O2 -Wno-error" \
               HOSTCFLAGS="-Wno-error" \
               gki_defconfig all
 
