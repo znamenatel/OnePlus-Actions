@@ -515,68 +515,58 @@ jobs:
             export KBUILD_BUILD_VERSION=1
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install libelf-dev
+            sudo apt install -y libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            # 1. Настройка базовых путей тулчейна
-            export CLANG_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928"
+            # 1. Устанавливаем стабильный системный Clang и зависимости хоста
+            sudo apt update
+            sudo apt install -y libelf-dev clang lld ccache
+
+            # 2. Настройка путей тулчейна ядра для утилит (pahole, dtc)
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
-            
-            sudo apt install libelf-dev
+            export PATH="/usr/lib/ccache:$TOOLS_DIR/bin:$PATH"
 
-            # Создаем символические ссылки для хост-инструментов, чтобы они были доступны глобально
-            mkdir -p $GITHUB_WORKSPACE/bin_tools
-            ln -sf $CLANG_DIR/bin/llvm-ar $GITHUB_WORKSPACE/bin_tools/llvm-ar
-            ln -sf $CLANG_DIR/bin/llvm-nm $GITHUB_WORKSPACE/bin_tools/llvm-nm
-            ln -sf $CLANG_DIR/bin/clang $GITHUB_WORKSPACE/bin_tools/clang
-            ln -sf $CLANG_DIR/bin/ld.lld $GITHUB_WORKSPACE/bin_tools/ld.lld
-            
-            # Экспортируем PATH на уровне текущей сессии с максимальным приоритетом
-            export PATH="$GITHUB_WORKSPACE/bin_tools:$CLANG_DIR/bin:$TOOLS_DIR/bin:/usr/lib/ccache:$PATH"
-
-            # 2. Переходим к сборке ядра
+            # 3. Переходим к сборке ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # Путь к реальному бинарнику dtc
+            # Путь к оригинальному бинарнику dtc для нашего фильтра платформ
             REAL_DTC="$TOOLS_DIR/bin/dtc"
 
-            # Запуск компиляции с жестким указанием абсолютных путей к LLVM-инструментам
+            # Запуск компиляции с использованием проверенного системного Clang/LLVM
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
               LLVM=1 \
               LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
-              HOSTCFLAGS="-I$CLANG_DIR/include" \
-              HOSTLDFLAGS="-L$CLANG_DIR/lib" \
               CC="ccache clang" \
-              AR="$CLANG_DIR/bin/llvm-ar" \
-              NM="$CLANG_DIR/bin/llvm-nm" \
-              OBJCOPY="$CLANG_DIR/bin/llvm-objcopy" \
-              OBJDUMP="$CLANG_DIR/bin/llvm-objdump" \
-              STRIP="$CLANG_DIR/bin/llvm-strip" \
-              HOSTCC="$CLANG_DIR/bin/clang" \
-              HOSTAR="$CLANG_DIR/bin/llvm-ar" \
-              HOSTNM="$CLANG_DIR/bin/llvm-nm" \
+              HOSTCC="ccache clang" \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
+              HOSTAR=llvm-ar \
+              HOSTNM=llvm-nm \
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
               KCFLAGS+=-O2 \
-              DTC="bash -c 'if echo \"\$\$@\" | grep -E \"sm8650|pineapple\" >/dev/null 2>&1; then $REAL_DTC \"\$\$@\"; else out=\"\"; while [ \"\$\$\#\" -gt 0 ]; do case \"\$\$1\" in -o) out=\"\$\$2\"; shift 2 ;; *) shift ;; esac; done; if [ -n \"\$$out\" ]; then mkdir -p \"\$(dirname \"\$\$out\")\"; echo \"/dts-v1/; / {};\" | $REAL_DTC -I dts -O dtb -o \"\$\$out\" >/dev/null 2>&1; fi; exit 0; fi' --" \
+              DTC="bash -c 'if echo \"\$\$@\" | grep -E \"sm8650|pineapple\" >/dev/null 2>&1; then $REAL_DTC \"\$\$@\"; else out=\"\"; while [ \"\$\$\#\" -gt 0 ]; do case \"\$\$1\" in -o) out=\"\$\$2\"; shift 2 ;; *) shift ;; esac; done; if [ -n \"\$\$out\" ]; then mkdir -p \"\$(dirname \"\$\$out\")\"; echo \"/dts-v1/; / {};\" | $REAL_DTC -I dts -O dtb -o \"\$\$out\" >/dev/null 2>&1; fi; exit 0; fi' --" \
               gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install libelf-dev
+            sudo apt install -y libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
             
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install libelf-dev
+            sudo apt install -y libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
           fi
