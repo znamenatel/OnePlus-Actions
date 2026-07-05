@@ -540,9 +540,9 @@ jobs:
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Безопасное создание скрипта DTC без использования heredoc (защита от ложных предупреждений линтера)
+            # Безопасное создание скрипта DTC с жестко прописанным абсолютным путем
             echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
-            echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
+            echo "REAL_DTC=\"$TOOLS_DIR/bin/dtc.orig\"" >> "$TOOLS_DIR/bin/dtc"
             echo 'ARGS="$@"' >> "$TOOLS_DIR/bin/dtc"
             echo 'if echo "$ARGS" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
             echo '    exec "$REAL_DTC" "$@"' >> "$TOOLS_DIR/bin/dtc"
@@ -628,19 +628,3 @@ jobs:
           
           ccache -s
           echo "✅ 内核编译完成"
-
-      - name: "📦 Prepare AnyKernel3 Flasher | 打包 AnyKernel3"
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace
-          git clone https://github.com/osm0sis/AnyKernel3.git --depth=1 AnyKernel3
-          
-          # Проверяем, где лежит скомпилированный Image и копируем его
-          if [ -f kernel_platform/common/out/arch/arm64/boot/Image ]; then
-            cp kernel_platform/common/out/arch/arm64/boot/Image AnyKernel3/
-          elif [ -f kernel_platform/common/arch/arm64/boot/Image ]; then
-            cp kernel_platform/common/arch/arm64/boot/Image AnyKernel3/
-          else
-            echo "❌ Ошибка: Скомпилированный файл Image не найден!" && exit 1
-          fi
-          
-          cd
