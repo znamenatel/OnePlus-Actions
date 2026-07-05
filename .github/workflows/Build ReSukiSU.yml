@@ -1,3 +1,6 @@
+Вот полный исправленный файл целиком. Просто скопируйте его и замените свой:
+
+```yaml
 name: Build ReSukiSU-gt5pro
 on:
   workflow_dispatch:
@@ -491,4 +494,133 @@ jobs:
             DEFCONFIG=./common/arch/arm64/configs/gki_defconfig
             sed -i 's/^CONFIG_LTO=n/CONFIG_LTO=y/' "$DEFCONFIG"
             sed -i 's/^CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG"
-            sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CL
+            sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG"
+            grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG"
+          fi
+
+          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "⚡ Remove check_defconfig"
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          echo "✅ 内核配置更新完成"
+
+      - name: "🔨 Build Kernel | 编译内核"
+        run: |
+          echo "🏗️ 开始内核编译..."
+          export KBUILD_BUILD_USER="xiaoxiaow"
+          export KBUILD_BUILD_HOST="xiaoxiaow_build"
+
+          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
+            export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
+            export KBUILD_BUILD_VERSION=1
+            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+            export PATH="/usr/lib/ccache:$PATH"
+            sudo apt install -y libelf-dev
+            cd kernel_workspace/kernel_platform/common
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
+            cd $GITHUB_WORKSPACE
+
+          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
+            sudo apt update
+            sudo apt install -y libelf-dev clang lld llvm ccache
+
+            SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
+            echo "🤖 Обнаружена системная версия LLVM/Clang: $SYS_LLVM_VER"
+
+            mkdir -p $GITHUB_WORKSPACE/sys_bin
+            ln -sf /usr/bin/clang-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/clang
+            ln -sf /usr/bin/ld.lld-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/ld.lld
+            ln -sf /usr/bin/llvm-ar-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-ar
+            ln -sf /usr/bin/llvm-nm-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-nm
+            ln -sf /usr/bin/llvm-objcopy-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-objcopy
+            ln -sf /usr/bin/llvm-objdump-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-objdump
+            ln -sf /usr/bin/llvm-strip-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-strip
+
+            [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
+            [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
+
+            export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
+            if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
+              mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
+            fi
+
+            # Запись скрипта dtc через echo без использования cat/EOF
+            echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
+            echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'ARGS="$@"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'if echo "$ARGS" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '    exec "$REAL_DTC" "$@"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'else' >> "$TOOLS_DIR/bin/dtc"
+            echo '    out_file=""' >> "$TOOLS_DIR/bin/dtc"
+            echo '    while [[ $# -gt 0 ]]; do' >> "$TOOLS_DIR/bin/dtc"
+            echo '        if [[ "$1" == "-o" ]]; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '            out_file="$2"' >> "$TOOLS_DIR/bin/dtc"
+            echo '            break' >> "$TOOLS_DIR/bin/dtc"
+            echo '        fi' >> "$TOOLS_DIR/bin/dtc"
+            echo '        shift' >> "$TOOLS_DIR/bin/dtc"
+            echo '    done' >> "$TOOLS_DIR/bin/dtc"
+            echo '    if [ -n "$out_file" ]; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '        mkdir -p "$(dirname "$out_file")"' >> "$TOOLS_DIR/bin/dtc"
+            echo '        echo -e "/dts-v1/;\n/ {};" | "$REAL_DTC" -I dts -O dtb -o "$out_file" >/dev/null 2>&1' >> "$TOOLS_DIR/bin/dtc"
+            echo '    fi' >> "$TOOLS_DIR/bin/dtc"
+            echo '    exit 0' >> "$TOOLS_DIR/bin/dtc"
+            echo 'fi' >> "$TOOLS_DIR/bin/dtc"
+
+            chmod +x "$TOOLS_DIR/bin/dtc"
+            export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
+
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            git checkout fs/Makefile 2>/dev/null || true
+
+            SUSFS_H_PATH=""
+            if [ -f "include/linux/susfs.h" ]; then
+              SUSFS_H_PATH="include/linux/susfs.h"
+            elif [ -f "../common/include/linux/susfs.h" ]; then
+              SUSFS_H_PATH="../common/include/linux/susfs.h"
+            else
+              FOUND_SUSFS=$(find . -name "susfs.h" -print -quit)
+              [ -n "$FOUND_SUSFS" ] && SUSFS_H_PATH="$FOUND_SUSFS"
+            fi
+
+            if [ -n "$SUSFS_H_PATH" ]; then
+              echo "🩹 Исправляем susfs.h: добавляем инклуд cred.h в начало файла"
+              sed -i '1i#include <linux/cred.h>' "$SUSFS_H_PATH"
+            fi
+
+            find . -type f -name "Makefile" -exec sed -i 's/-Werror//g' {} + 2>/dev/null || true
+
+            make -j$(nproc --all) \
+              O=out \
+              ARCH=arm64 \
+              LLVM=1 \
+              LLVM_IAS=1 \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CC="ccache clang" \
+              HOSTCC="ccache clang" \
+              AR="llvm-ar" \
+              NM="llvm-nm" \
+              OBJCOPY="llvm-objcopy" \
+              OBJDUMP="llvm-objdump" \
+              STRIP="llvm-strip" \
+              HOSTAR="llvm-ar" \
+              HOSTNM="llvm-nm" \
+              HOSTLD="ld.lld" \
+              LD="ld.lld" \
+              RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+              PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+              KCFLAGS="-O2 -Wno-error -Wno-int-conversion -Wno-implicit-function-declaration -Wno-array-bounds -Wno-incompatible-pointer-types" \
+              HOSTCFLAGS="-Wno-error -Wno-int-conversion -Wno-implicit-function-declaration -Wno-array-bounds -Wno-incompatible-pointer-types" \
+              gki_defconfig all
+            cd $GITHUB_WORKSPACE
+
+          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
+            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+            export PATH="/usr/lib/ccache:$PATH"
+            sudo apt install -y libelf-dev
+            cd kernel_workspace/kernel_platform/common
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
+            cd $GITHUB_WORKSPACE
+            
+          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
+            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+            export PATH="/usr/lib/ccache:$PATH"
+            sudo
