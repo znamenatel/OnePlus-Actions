@@ -490,13 +490,11 @@ jobs:
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
 
-            # 3. Перехватчик DTC (работает безупречно)
+            # 3. Перехватчик DTC (безупречная версия)
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
-            
             if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
-
             echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
             echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
             echo 'if echo "$@" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
@@ -516,13 +514,21 @@ jobs:
             echo '    fi' >> "$TOOLS_DIR/bin/dtc"
             echo '    exit 0' >> "$TOOLS_DIR/bin/dtc"
             echo 'fi' >> "$TOOLS_DIR/bin/dtc"
-
             chmod +x "$TOOLS_DIR/bin/dtc"
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
 
-            # 4. Чистый запуск компиляции
+            # 4. Переход и инжект SUSFS заголовков
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            echo "🎯 Инжект заголовков SUSFS в код..."
+            for file in fs/open.c fs/stat.c fs/namei.c; do
+              if [ -f "$file" ]; then
+                if ! grep -q "<linux/susfs.h>" "$file"; then
+                  sed -i '1i #include <linux/susfs.h>' "$file"
+                fi
+              fi
+            done
 
+            # 5. Запуск чистой компиляции
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
