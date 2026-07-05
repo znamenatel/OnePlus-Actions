@@ -1,6 +1,4 @@
-Вот полный исправленный файл целиком. Просто скопируйте его и замените свой:
 
-```yaml
 name: Build ReSukiSU-gt5pro
 on:
   workflow_dispatch:
