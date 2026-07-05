@@ -535,12 +535,12 @@ jobs:
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
 
-            export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
+           export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Безопасное создание скрипта DTC с жестко прописанным абсолютным путем
+            # Записываем скрипт-заглушку напрямую через echo (экранируем кавычки правильно)
             echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
             echo "REAL_DTC=\"$TOOLS_DIR/bin/dtc.orig\"" >> "$TOOLS_DIR/bin/dtc"
             echo 'ARGS="$@"' >> "$TOOLS_DIR/bin/dtc"
