@@ -547,7 +547,6 @@ jobs:
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Записываем парсер аргументов с защитой от пустых выходов
             echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
             echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
             echo 'ARGS="$@"' >> "$TOOLS_DIR/bin/dtc"
@@ -570,13 +569,31 @@ jobs:
             echo 'fi' >> "$TOOLS_DIR/bin/dtc"
 
             chmod +x "$TOOLS_DIR/bin/dtc"
-            echo "🚀 Парсер DTC пересобран на индексах массивов!"
-
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
 
-            # 4. Переходим в директорию ядра и запускаем компиляцию
+            # 4. Переходим в директорию ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
+            # 🩹 ФИКС ДЛЯ SUSFS: Принудительно инжектируем хедеры SUSFS в файлы VFS, если они там вызываются
+            echo "🩹 Проверяем и фиксим инклуды SUSFS..."
+            if [ -f "fs/open.c" ]; then
+              if ! grep -q "linux/susfs.h" fs/open.c; then
+                sed -i '1i#include <linux/susfs.h>' fs/open.c
+                echo "✅ Добавлен инклуд susfs.h в fs/open.c"
+              fi
+            fi
+            if [ -f "fs/stat.c" ]; then
+              if ! grep -q "linux/susfs.h" fs/stat.c; then
+                sed -i '1i#include <linux/susfs.h>' fs/stat.c
+              fi
+            fi
+            if [ -f "fs/namei.c" ]; then
+              if ! grep -q "linux/susfs.h" fs/namei.c; then
+                sed -i '1i#include <linux/susfs.h>' fs/namei.c
+              fi
+            fi
+
+            # 5. Запуск компиляции
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
