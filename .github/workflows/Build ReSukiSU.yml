@@ -1,4 +1,3 @@
-
 name: Build ReSukiSU-gt5pro
 on:
   workflow_dispatch:
