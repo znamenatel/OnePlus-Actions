@@ -526,7 +526,7 @@ jobs:
 
             # 2. Находим версию системного Clang и создаем жесткие симлинки без суффиксов
             SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
-            echo "🤖 Обнаружена системная версия LLVM/Clang: $SYS_LLVM_VER"
+            echo "🤖 Обнаружена dynamic-версия LLVM/Clang: $SYS_LLVM_VER"
             
             mkdir -p $GITHUB_WORKSPACE/sys_bin
             ln -sf /usr/bin/clang-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/clang
@@ -540,51 +540,40 @@ jobs:
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
 
-            # 3. Подготовка путей и создание умного скрипта-перехватчика DTC на диске
+            # 3. Безопасное развертывание умного скрипта DTC (без heredoc/EOF)
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             
-            # Сохраняем оригинальный dtc как dtc.orig, если еще не сохранили
             if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Пишем чистый Bash-скрипт перехвата
-            cat << 'EOF' > "$TOOLS_DIR/bin/dtc"
-            #!/bin/bash
-            REAL_DTC="$(dirname "$0")/dtc.orig"
-            ARGS="$@"
-
-            # Проверяем, относится ли файл к нашей целевой платформе sm8650/pineapple
-            if echo "$ARGS" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then
-              exec "$REAL_DTC" "$@"
-            else
-              # Для старых чипов ищем выходной путь (-o), создаем структуру папок и отдаем пустышку
-              out_file=""
-              while [ "$#" -gt 0 ]; do
-                case "$1" in
-                  -o) out_file="$2"; shift 2 ;;
-                  *) shift ;;
-                esac
-              done
-
-              if [ -n "$out_file" ]; then
-                mkdir -p "$(dirname "$out_file")"
-                echo '/dts-v1/; / {};' | "$REAL_DTC" -I dts -O dtb -o "$out_file" >/dev/null 2>&1
-              fi
-              exit 0
-            fi
-            EOF
+            # Записываем скрипт через echo с экранированием, чтобы избежать ошибок синтаксиса YAML
+            echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
+            echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'ARGS="$@"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'if echo "$ARGS" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '  exec "$REAL_DTC" "$@"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'else' >> "$TOOLS_DIR/bin/dtc"
+            echo '  out_file=""' >> "$TOOLS_DIR/bin/dtc"
+            echo '  while [ "$#" -gt 0 ]; do' >> "$TOOLS_DIR/bin/dtc"
+            echo '    case "$1" in -o) out_file="$2"; shift 2 ;; *) shift ;; esac' >> "$TOOLS_DIR/bin/dtc"
+            echo '  done' >> "$TOOLS_DIR/bin/dtc"
+            echo '  if [ -n "$out_file" ]; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '    mkdir -p "$(dirname "$out_file")"' >> "$TOOLS_DIR/bin/dtc"
+            echo '    echo -e "/dts-v1/;\n/ {};" | "$REAL_DTC" -I dts -O dtb -o "$out_file" >/dev/null 2>&1' >> "$TOOLS_DIR/bin/dtc"
+            echo '  fi' >> "$TOOLS_DIR/bin/dtc"
+            echo '  exit 0' >> "$TOOLS_DIR/bin/dtc"
+            echo 'fi' >> "$TOOLS_DIR/bin/dtc"
 
             chmod +x "$TOOLS_DIR/bin/dtc"
-            echo "🚀 Умный перехватчик DTC успешно интегрирован в тулчейн!"
+            echo "🚀 Тулчейн DTC успешно модифицирован!"
 
-            # Экспортируем пути сборщика хоста
+            # Экспортируем пути
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
 
-            # 4. Переходим в директорию общих исходников ядра
+            # 4. Переходим в директорию ядра и запускаем компиляцию
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 5. Запуск компиляции без WERROR и с чистым вызовом подмененного DTC
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
