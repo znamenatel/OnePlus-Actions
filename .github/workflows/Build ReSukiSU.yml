@@ -500,6 +500,42 @@ jobs:
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "✅ 内核配置更新完成"
 
+      name: Build Kernel | 编译内核
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_VERSION:
+        description: 'Выберите версию ядра / 选择内核版本'
+        required: true
+        default: '6.6'
+        type: choice
+        options:
+          - '6.6'
+          - '6.1'
+          - '5.15'
+          - '5.10'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "🚚 Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "🔧 Setup Environment"
+        run: |
+          sudo apt update
+          sudo apt install -y bc bison build-essential ccache flex glibc-source libelf-dev libssl-dev link-grammar lld llvm make openssl python3 python3-pip text-format-specifier-po-python
+
+      - name: "⚙️ Cache ccache"
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ github.event.inputs.KERNEL_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.event.inputs.KERNEL_VERSION }}-
+
       - name: "🔨 Build Kernel | 编译内核"
         run: |
           echo "🏗️ 开始内核编译..."
@@ -540,7 +576,6 @@ jobs:
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Построчно создаем заглушку DTC с помощью echo, избегая поломки YAML разметки
             echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
             echo "REAL_DTC=\"$TOOLS_DIR/bin/dtc.orig\"" >> "$TOOLS_DIR/bin/dtc"
             echo 'ARGS="$@"' >> "$TOOLS_DIR/bin/dtc"
@@ -628,3 +663,8 @@ jobs:
           
           ccache -s
           echo "✅ 内核编译完成"
+
+      - name: "📦 Prepare AnyKernel3 Flasher"
+        run: |
+          echo "Финишная прямая, собираем архив..."
+          # Здесь идет твоя логика упаковки AnyKernel3
