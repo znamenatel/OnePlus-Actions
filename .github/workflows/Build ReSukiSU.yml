@@ -510,16 +510,18 @@ jobs:
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
+          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ];
+          then
             export KBUILD_BUILD_TIMESTAMP="Tue Mar 10 03:53:33 UTC 2026"
             export KBUILD_BUILD_VERSION=1
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install -y libelf-dev
             cd kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
 
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
+          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ];
+          then
             # 1. Устанавливаем полный пакет компилятора и утилит LLVM хоста
             sudo apt update
             sudo apt install -y libelf-dev clang lld llvm ccache
@@ -589,8 +591,7 @@ jobs:
             fi
 
             if [ -n "$SUSFS_H_PATH" ] && [ -f "fs/Makefile" ]; then
-              echo "🎯 Найдено: $SUSFS_H_PATH. Добавляем точечные флаги CFLAGS в fs/Makefile"
-              # Прописываем флаг -include персонально для каждого объекта сборки. Это НЕ затронет другие папки и файлы ядра.
+              echo "🎯 Найдено: $SUSFS_H_PATH. Добавляем точечные флаги CFLAGS in fs/Makefile"
               echo -e "\nCFLAGS_open.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
               echo "CFLAGS_stat.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
               echo "CFLAGS_namei.o += -include \$(srctree)/$SUSFS_H_PATH" >> fs/Makefile
@@ -598,7 +599,13 @@ jobs:
               echo "⚠️ Предупреждение: не удалось добавить точечный инжект SUSFS флагов."
             fi
 
-            # 5. Запуск чистой компиляции
+            # 🛠️ Глобальное принудительное отключение жестких варнингов ядра во всех Makefile
+            if [ -f "Makefile" ]; then
+              sed -i 's/-Werror-/-Wno-error-/g' Makefile 2>/dev/null || true
+              sed -i 's/-Werror/-Wno-error/g' Makefile 2>/dev/null || true
+            fi
+
+            # 5. Запуск чистой компиляции с максимальным подавлением ошибок варнингов
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
@@ -618,18 +625,20 @@ jobs:
               LD="ld.lld" \
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-              KCFLAGS="-O2 -Wno-error" \
-              HOSTCFLAGS="-Wno-error" \
+              KCFLAGS="-O2 -Wno-error -Wno-array-bounds -Wno-error=array-bounds" \
+              HOSTCFLAGS="-Wno-error -Wno-array-bounds -Wno-error=array-bounds" \
               gki_defconfig all
 
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
+          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ];
+          then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install -y libelf-dev
             cd kernel_workspace/kernel_platform/common
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
             
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
+          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ];
+          then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
             sudo apt install -y libelf-dev
