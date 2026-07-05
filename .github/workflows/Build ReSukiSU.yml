@@ -476,7 +476,7 @@ jobs:
 
             # 2. Находим версию системного Clang и создаем жесткие симлинки без суффиксов
             SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
-            echo "🤖 Обнаружена системная версия LLVM/Clang: $SYS_LLVM_VER"
+            echo "🤖 Обнаружена systemic-версия LLVM/Clang: $SYS_LLVM_VER"
             
             mkdir -p $GITHUB_WORKSPACE/sys_bin
             ln -sf /usr/bin/clang-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/clang
@@ -490,29 +490,26 @@ jobs:
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
             [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
 
-            # 3. Подготовка путей и создание пуленепробиваемого скрипта-перехватчика DTC
+            # 3. Подготовка путей и создание пуленепробиваемого скрипта-перехватчика DTC (без heredoc)
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             
             if [ -f "$TOOLS_DIR/bin/dtc" ] && [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
               mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
             fi
 
-            # Ставим строгие и чистые отступы внутри heredoc, чтобы YAML парсер не ругался
-            cat << 'EOF' > "$TOOLS_DIR/bin/dtc"
-            #!/bin/bash
-            REAL_DTC="$(dirname "$0")/dtc.orig"
-            if echo "$@" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then
-                exec "$REAL_DTC" "$@"
-            else
-                # Компактный и безопасный поиск выходного файла -o без ломающих YAML циклов
-                OUT_FILE=$(echo "$@" | grep -oE '\-o [^ ]+' | awk '{print $2}')
-                if [ -n "$OUT_FILE" ]; then
-                    mkdir -p "$(dirname "$OUT_FILE")"
-                    echo -e "/dts-v1/;\n/ {};" | "$REAL_DTC" -I dts -O dtb -o "$OUT_FILE" >/dev/null 2>&1
-                fi
-                exit 0
-            fi
-            EOF
+            # Безопасное пошаговое создание скрипта без использования конструкции cat << EOF
+            echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
+            echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'if echo "$@" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '    exec "$REAL_DTC" "$@"' >> "$TOOLS_DIR/bin/dtc"
+            echo 'else' >> "$TOOLS_DIR/bin/dtc"
+            echo '    OUT_FILE=$(echo "$@" | grep -oE '"'\-o [^ ]+'"' | awk '"'{print \$2}'"粉)' >> "$TOOLS_DIR/bin/dtc"
+            echo '    if [ -n "$OUT_FILE" ]; then' >> "$TOOLS_DIR/bin/dtc"
+            echo '        mkdir -p "$(dirname "$OUT_FILE")"' >> "$TOOLS_DIR/bin/dtc"
+            echo '        echo -e "/dts-v1/;\n/ {};" | "$REAL_DTC" -I dts -O dtb -o "$OUT_FILE" >/dev/null 2>&1' >> "$TOOLS_DIR/bin/dtc"
+            echo '    fi' >> "$TOOLS_DIR/bin/dtc"
+            echo '    exit 0' >> "$TOOLS_DIR/bin/dtc"
+            echo 'fi' >> "$TOOLS_DIR/bin/dtc"
 
             chmod +x "$TOOLS_DIR/bin/dtc"
             export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
@@ -520,7 +517,7 @@ jobs:
             # 4. Переходим в директорию ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🔍 Полностью сбрасываем Makefile и исходники к оригиналу перед применением чистой логики
+            # 🔍 Полностью сбрасываем файлы к оригиналу перед применением чистой логики
             git checkout fs/open.c fs/stat.c fs/namei.c fs/Makefile 2>/dev/null || true
 
             # 🩹 Ювелирный точечный инжект SUSFS только для трех целевых файлов через CFLAGS_*.o
@@ -584,9 +581,3 @@ jobs:
           
           ccache -s
           echo "✅ 内核编译完成"
-      - name: "📦 Package Kernel | 打包内核"
-        run: |
-          echo "📦 准备AnyKernel3打包环境..."
-          git clone https://github.com/Xiaomichael/AnyKernel3 --depth=1
-          rm -rf ./AnyKernel3/.git
-          mkdir -p kernel_workspace/kernel_
