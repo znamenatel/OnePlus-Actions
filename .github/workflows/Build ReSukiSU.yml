@@ -574,26 +574,27 @@ jobs:
             # 4. Переходим в директорию ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🩹 ФИКС ДЛЯ SUSFS: Принудительно инжектируем хедеры SUSFS в файлы VFS, если они там вызываются
-            echo "🩹 Проверяем и фиксим инклуды SUSFS..."
-            if [ -f "fs/open.c" ]; then
-              if ! grep -q "linux/susfs.h" fs/open.c; then
-                sed -i '1i#include <linux/susfs.h>' fs/open.c
-                echo "✅ Добавлен инклуд susfs.h в fs/open.c"
-              fi
-            fi
-            if [ -f "fs/stat.c" ]; then
-              if ! grep -q "linux/susfs.h" fs/stat.c; then
-                sed -i '1i#include <linux/susfs.h>' fs/stat.c
-              fi
-            fi
-            if [ -f "fs/namei.c" ]; then
-              if ! grep -q "linux/susfs.h" fs/namei.c; then
-                sed -i '1i#include <linux/susfs.h>' fs/namei.c
+            # 🔍 Восстанавливаем оригинальные файлы (убираем прошлые инжекты, если они остались)
+            git checkout fs/open.c fs/stat.c fs/namei.c 2>/dev/null || true
+
+            # 🩹 Динамический поиск и глобальный проброс заголовка SUSFS
+            SUSFS_FLAG=""
+            if [ -f "include/linux/susfs.h" ]; then
+              echo "🎯 Найдено: include/linux/susfs.h. Подключаем глобально."
+              SUSFS_FLAG="-include include/linux/susfs.h"
+            elif [ -f "../common/include/linux/susfs.h" ]; then
+              echo "🎯 Найдено в родительском инклуде. Подключаем глобально."
+              SUSFS_FLAG="-include ../common/include/linux/susfs.h"
+            else
+              # Если патч положил файл в другое место, найдем его путь относительно текущей папки
+              FOUND_SUSFS=$(find . -name "susfs.h" -print -quit)
+              if [ -n "$FOUND_SUSFS" ]; then
+                echo "🎯 Найдено по пути: $FOUND_SUSFS. Подключаем глобально."
+                SUSFS_FLAG="-include $FOUND_SUSFS"
               fi
             fi
 
-            # 5. Запуск компиляции
+            # 5. Запуск компиляции с флагом глобального инклуда
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
@@ -613,7 +614,7 @@ jobs:
               LD="ld.lld" \
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-              KCFLAGS="-O2 -Wno-error" \
+              KCFLAGS="-O2 -Wno-error $SUSFS_FLAG" \
               HOSTCFLAGS="-Wno-error" \
               gki_defconfig all
 
