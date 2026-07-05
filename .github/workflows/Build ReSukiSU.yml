@@ -520,21 +520,39 @@ jobs:
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            # 1. Устанавливаем стабильный системный Clang и зависимости хоста
+            # 1. Устанавливаем полный пакет компилятора и утилит LLVM хоста
             sudo apt update
-            sudo apt install -y libelf-dev clang lld ccache
+            sudo apt install -y libelf-dev clang lld llvm ccache
 
-            # 2. Настройка путей тулчейна ядра для утилит (pahole, dtc)
+            # 2. Находим версию системного Clang (обычно 14, 15 или 18 в зависимости от Ubuntu)
+            # и создаем жесткие симлинки без суффиксов, чтобы Kbuild их точно нашел
+            SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
+            echo "🤖 Обнаружена системная версия LLVM/Clang: $SYS_LLVM_VER"
+            
+            mkdir -p $GITHUB_WORKSPACE/sys_bin
+            ln -sf /usr/bin/clang-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/clang
+            ln -sf /usr/bin/ld.lld-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/ld.lld
+            ln -sf /usr/bin/llvm-ar-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-ar
+            ln -sf /usr/bin/llvm-nm-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-nm
+            ln -sf /usr/bin/llvm-objcopy-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-objcopy
+            ln -sf /usr/bin/llvm-objdump-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-objdump
+            ln -sf /usr/bin/llvm-strip-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/llvm-strip
+
+            # Проверяем стандартные пути, если версии с суффиксами не нашлись
+            [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-ar ] && ln -sf /usr/bin/llvm-ar $GITHUB_WORKSPACE/sys_bin/llvm-ar
+            [ ! -f $GITHUB_WORKSPACE/sys_bin/llvm-nm ] && ln -sf /usr/bin/llvm-nm $GITHUB_WORKSPACE/sys_bin/llvm-nm
+
+            # 3. Настройка путей (pahole, dtc, наши проверенные утилиты хоста)
             export TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
-            export PATH="/usr/lib/ccache:$TOOLS_DIR/bin:$PATH"
+            export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/sys_bin:$TOOLS_DIR/bin:$PATH"
 
-            # 3. Переходим к сборке ядра
+            # 4. Переходим к сборке ядра
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # Путь к оригинальному бинарнику dtc для нашего фильтра платформ
+            # Оригинальный бинарник dtc для обхода старых SoC
             REAL_DTC="$TOOLS_DIR/bin/dtc"
 
-            # Запуск компиляции с использованием проверенного системного Clang/LLVM
+            # Запуск компиляции с абсолютными и проверенными ссылками на инструменты
             make -j$(nproc --all) \
               O=out \
               ARCH=arm64 \
@@ -543,13 +561,15 @@ jobs:
               CROSS_COMPILE=aarch64-linux-gnu- \
               CC="ccache clang" \
               HOSTCC="ccache clang" \
-              AR=llvm-ar \
-              NM=llvm-nm \
-              OBJCOPY=llvm-objcopy \
-              OBJDUMP=llvm-objdump \
-              STRIP=llvm-strip \
-              HOSTAR=llvm-ar \
-              HOSTNM=llvm-nm \
+              AR="llvm-ar" \
+              NM="llvm-nm" \
+              OBJCOPY="llvm-objcopy" \
+              OBJDUMP="llvm-objdump" \
+              STRIP="llvm-strip" \
+              HOSTAR="llvm-ar" \
+              HOSTNM="llvm-nm" \
+              HOSTLD="ld.lld" \
+              LD="ld.lld" \
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
               KCFLAGS+=-O2 \
