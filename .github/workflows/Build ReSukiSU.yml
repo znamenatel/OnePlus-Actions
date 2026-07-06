@@ -460,7 +460,7 @@ jobs:
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          # Принудительно подключаем susfs.h во все компилируемые файлы через флаги компилятора
+          # Глобальный флаг принудительного подключения заголовка во все компилируемые файлы ядра
           EXTRA_CFLAGS="-O2 -Wno-error -include linux/susfs.h"
 
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
@@ -476,24 +476,25 @@ jobs:
 
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🔥 Безопасный патч исходников: ищем файлы и добавляем инклуд (без падения скрипта, если не найдено)
-            echo "🔧 Поиск и внедрение инклудов SUSFS в исходный код..."
-            find . -name "open.c" -path "*/fs/*" -exec sed -i '1s/^/#include <linux\/susfs.h>\n/' {} \; -exec echo "✅ Пропатчен: {}" \; || true
-            find . -name "sched.h" -path "*/include/linux/*" -exec sed -i '1s/^/#include <linux\/susfs.h>\n/' {} \; -exec echo "✅ Пропатчен: {}" \; || true
+            # 🔥 ПРЯМОЙ ХАК: Если флаги компилятора сбрасываются для подсистемы fs/, добавим инклуд напрямую в файлы
+            echo "🔧 Проверяю и патчу open.c и sched.h..."
+            [ -f "fs/open.c" ] && sed -i '1i #include <linux/susfs.h>' fs/open.c && echo "✅ fs/open.c успешно пропатчен"
+            [ -f "include/linux/sched.h" ] && sed -i '1i #include <linux/susfs.h>' include/linux/sched.h && echo "✅ include/linux/sched.h успешно пропатчен"
 
             # Шаг 1: Генерируем дефконфиг
+            echo "📝 Генерирую дефконфиг..."
             make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
 
-            # Шаг 2: Пробиваем этап DTBS с игнорированием ошибок сторонних платформ
-            echo "🎯 Компилирую дерево устройств..."
+            # Шаг 2: Компиляция дерева устройств с игнорированием ошибок чужих платформ
+            echo "🎯 Сборка DTBS (игнорируем ошибки Xperia/Surface)..."
             make -i -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CC="ccache clang" HOSTCC="ccache clang" \
               AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
               dtbs || true
 
-            # Шаг 3: Основная сборка самого ядра
-            echo "🚀 Запускаю финальную сборку образа ядра..."
+            # Шаг 3: Основная сборка образа ядра (all)
+            echo "🚀 Запуск финальной компиляции ядра..."
             make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CC="ccache clang" HOSTCC="ccache clang" \
