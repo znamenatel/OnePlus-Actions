@@ -454,14 +454,14 @@ jobs:
           echo "⚡ Remove check_defconfig"
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "✅ 内核配置更新完成"
-      - name: "🔨 Build Kernel | 编译内核"
+     -- name: "🔨 Build Kernel | 编译内核"
         run: |
           echo "🏗️ Начинаю сборку ядра..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          # Глобальный флаг принудительного подключения заголовка во все компилируемые файлы ядра
-          EXTRA_CFLAGS="-O2 -Wno-error -include linux/susfs.h"
+          # Убираем -include из глобальных флагов во избежание циклических ошибок подготовки
+          EXTRA_CFLAGS="-O2 -Wno-error"
 
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
             sudo apt update && sudo apt install -y libelf-dev clang lld llvm ccache
@@ -476,10 +476,16 @@ jobs:
 
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🔥 ПРЯМОЙ ХАК: Если флаги компилятора сбрасываются для подсистемы fs/, добавим инклуд напрямую в файлы
-            echo "🔧 Проверяю и патчу open.c и sched.h..."
-            [ -f "fs/open.c" ] && sed -i '1i #include <linux/susfs.h>' fs/open.c && echo "✅ fs/open.c успешно пропатчен"
-            [ -f "include/linux/sched.h" ] && sed -i '1i #include <linux/susfs.h>' include/linux/sched.h && echo "✅ include/linux/sched.h успешно пропатчен"
+            # 🔥 ТОЧЕЧНЫЙ ПАТЧ: Внедряем инклуд строго в нужные файлы исходников
+            echo "🔧 Внедряю инклуды SUSFS непосредственно в open.c и sched.h..."
+            if [ -f "fs/open.c" ]; then
+              sed -i '1s/^/#include <linux\/susfs.h>\n/' fs/open.c
+              echo "✅ fs/open.c пропатчен"
+            fi
+            if [ -f "include/linux/sched.h" ]; then
+              sed -i '1s/^/#include <linux\/susfs.h>\n/' include/linux/sched.h
+              echo "✅ include/linux/sched.h пропатчен"
+            fi
 
             # Шаг 1: Генерируем дефконфиг
             echo "📝 Генерирую дефконфиг..."
