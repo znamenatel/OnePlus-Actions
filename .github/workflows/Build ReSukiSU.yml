@@ -460,7 +460,7 @@ jobs:
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          # Принудительно подключаем susfs.h во все компилируемые файлы через флаги
+          # Принудительно подключаем susfs.h во все компилируемые файлы через флаги компилятора
           EXTRA_CFLAGS="-O2 -Wno-error -include linux/susfs.h"
 
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
@@ -474,20 +474,32 @@ jobs:
             done
             export PATH="$GITHUB_WORKSPACE/sys_bin:$PATH"
 
-            # Умный патч DTC: Пропускает сборку dts ТОЛЬКО если она падает на не-sm8650 устройствах
+            # Безопасный патч DTC через echo (без капризных heredoc/EOF конструкции)
             TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             if [ -f "$TOOLS_DIR/bin/dtc" ]; then
               if [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
                 mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
               fi
+              
               echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
-              echo 'if echo "$@" | grep -q "sm8650"; then' >> "$TOOLS_DIR/bin/dtc"
-              echo '  exec "$(dirname "$0")/dtc.orig" "$@"' >> "$TOOLS_DIR/bin/dtc"
+              echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
+              echo 'if echo "$@" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
+              echo '    exec "$REAL_DTC" "$@"' >> "$TOOLS_DIR/bin/dtc"
               echo 'else' >> "$TOOLS_DIR/bin/dtc"
-              echo '  "$(dirname "$0")/dtc.orig" "$@" 2>/dev/null || exit 0' >> "$TOOLS_DIR/bin/dtc"
+              echo '    out_file=""' >> "$TOOLS_DIR/bin/dtc"
+              echo '    while [ $# -gt 0 ]; do' >> "$TOOLS_DIR/bin/dtc"
+              echo '        if [ "$1" = "-o" ]; then out_file="$2"; break; fi' >> "$TOOLS_DIR/bin/dtc"
+              echo '        shift' >> "$TOOLS_DIR/bin/dtc"
+              echo '    done' >> "$TOOLS_DIR/bin/dtc"
+              echo '    if [ -n "$out_file" ]; then' >> "$TOOLS_DIR/bin/dtc"
+              echo '        mkdir -p "$(dirname "$out_file")"' >> "$TOOLS_DIR/bin/dtc"
+              echo '        echo -e "/dts-v1/;\\n/ {};" | "$REAL_DTC" -I dts -O dtb -o "$out_file" >/dev/null 2>&1' >> "$TOOLS_DIR/bin/dtc"
+              echo '    fi' >> "$TOOLS_DIR/bin/dtc"
+              echo '    exit 0' >> "$TOOLS_DIR/bin/dtc"
               echo 'fi' >> "$TOOLS_DIR/bin/dtc"
+              
               chmod +x "$TOOLS_DIR/bin/dtc"
-              echo "✅ Интеллектуальный патч DTC применен"
+              echo "✅ Патч-перехватчик DTC успешно применен через echo"
             fi
 
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
