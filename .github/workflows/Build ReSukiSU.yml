@@ -475,19 +475,24 @@ jobs:
             export PATH="$GITHUB_WORKSPACE/sys_bin:$PATH"
 
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            
+
+            # 🔥 Безопасный патч исходников: ищем файлы и добавляем инклуд (без падения скрипта, если не найдено)
+            echo "🔧 Поиск и внедрение инклудов SUSFS в исходный код..."
+            find . -name "open.c" -path "*/fs/*" -exec sed -i '1s/^/#include <linux\/susfs.h>\n/' {} \; -exec echo "✅ Пропатчен: {}" \; || true
+            find . -name "sched.h" -path "*/include/linux/*" -exec sed -i '1s/^/#include <linux\/susfs.h>\n/' {} \; -exec echo "✅ Пропатчен: {}" \; || true
+
             # Шаг 1: Генерируем дефконфиг
             make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
 
-            # Шаг 2: Пробиваем этап DTBS. Флаг -i заставит пропустить кривые чужие dts, не останавливая процесс!
-            echo "🎯 Компилирую дерево устройств (ошибки сторонних платформ игнорируются)..."
+            # Шаг 2: Пробиваем этап DTBS с игнорированием ошибок сторонних платформ
+            echo "🎯 Компилирую дерево устройств..."
             make -i -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CC="ccache clang" HOSTCC="ccache clang" \
               AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
               dtbs || true
 
-            # Шаг 3: Основная сборка самого ядра (здесь ошибки уже не игнорируем)
+            # Шаг 3: Основная сборка самого ядра
             echo "🚀 Запускаю финальную сборку образа ядра..."
             make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
@@ -523,4 +528,3 @@ jobs:
           
           ccache -s
           echo "✅ Процесс сборки завершен!"
-          
