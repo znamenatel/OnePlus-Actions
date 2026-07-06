@@ -456,37 +456,38 @@ jobs:
           echo "✅ 内核配置更新完成"
       - name: "🔨 Build Kernel | 编译内核"
         run: |
-          echo "🏗️ Начинаю сборку ядра с принудительным инжектом заголовков..."
+          echo "🏗️ Начинаю сборку ядра..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          # Базовые флаги для решения проблем с SUSFS и отключения строгих предупреждений
-          # -include принудительно вшивает susfs.h во все исходники при сборке!
+          # Принудительно подключаем susfs.h во все компилируемые файлы через флаги
           EXTRA_CFLAGS="-O2 -Wno-error -include linux/susfs.h"
 
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
             sudo apt update && sudo apt install -y libelf-dev clang lld llvm ccache
             
-            # Конфигурация системного LLVM окружения
+            # Настройка путей компилятора LLVM
             mkdir -p $GITHUB_WORKSPACE/sys_bin
             SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
-            echo "🤖 Используется системный LLVM версии: $SYS_LLVM_VER"
-            
             for tool in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-strip; do
               ln -sf /usr/bin/$tool-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/$tool
             done
             export PATH="$GITHUB_WORKSPACE/sys_bin:$PATH"
 
-            # Перехватчик DTC
+            # Умный патч DTC: Пропускает сборку dts ТОЛЬКО если она падает на не-sm8650 устройствах
             TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             if [ -f "$TOOLS_DIR/bin/dtc" ]; then
               if [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
                 mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
               fi
               echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
-              echo 'if echo "$@" | grep -q "sm8650"; then exec "$(dirname "$0")/dtc.orig" "$@"; else exit 0; fi' >> "$TOOLS_DIR/bin/dtc"
+              echo 'if echo "$@" | grep -q "sm8650"; then' >> "$TOOLS_DIR/bin/dtc"
+              echo '  exec "$(dirname "$0")/dtc.orig" "$@"' >> "$TOOLS_DIR/bin/dtc"
+              echo 'else' >> "$TOOLS_DIR/bin/dtc"
+              echo '  "$(dirname "$0")/dtc.orig" "$@" 2>/dev/null || exit 0' >> "$TOOLS_DIR/bin/dtc"
+              echo 'fi' >> "$TOOLS_DIR/bin/dtc"
               chmod +x "$TOOLS_DIR/bin/dtc"
-              echo "✅ Патч-перехватчик DTC успешно применен"
+              echo "✅ Интеллектуальный патч DTC применен"
             fi
 
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
@@ -523,4 +524,4 @@ jobs:
           fi
           
           ccache -s
-          echo "✅ Процесс сборки успешно завершен!"
+          echo "✅ Процесс сборки завершен!"
