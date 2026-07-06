@@ -474,35 +474,21 @@ jobs:
             done
             export PATH="$GITHUB_WORKSPACE/sys_bin:$PATH"
 
-            # Безопасный патч DTC через echo (без капризных heredoc/EOF конструкции)
-            TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
-            if [ -f "$TOOLS_DIR/bin/dtc" ]; then
-              if [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
-                mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
-              fi
-              
-              echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
-              echo 'REAL_DTC="$(dirname "$0")/dtc.orig"' >> "$TOOLS_DIR/bin/dtc"
-              echo 'if echo "$@" | grep -E "sm8650|pineapple" >/dev/null 2>&1; then' >> "$TOOLS_DIR/bin/dtc"
-              echo '    exec "$REAL_DTC" "$@"' >> "$TOOLS_DIR/bin/dtc"
-              echo 'else' >> "$TOOLS_DIR/bin/dtc"
-              echo '    out_file=""' >> "$TOOLS_DIR/bin/dtc"
-              echo '    while [ $# -gt 0 ]; do' >> "$TOOLS_DIR/bin/dtc"
-              echo '        if [ "$1" = "-o" ]; then out_file="$2"; break; fi' >> "$TOOLS_DIR/bin/dtc"
-              echo '        shift' >> "$TOOLS_DIR/bin/dtc"
-              echo '    done' >> "$TOOLS_DIR/bin/dtc"
-              echo '    if [ -n "$out_file" ]; then' >> "$TOOLS_DIR/bin/dtc"
-              echo '        mkdir -p "$(dirname "$out_file")"' >> "$TOOLS_DIR/bin/dtc"
-              echo '        echo -e "/dts-v1/;\\n/ {};" | "$REAL_DTC" -I dts -O dtb -o "$out_file" >/dev/null 2>&1' >> "$TOOLS_DIR/bin/dtc"
-              echo '    fi' >> "$TOOLS_DIR/bin/dtc"
-              echo '    exit 0' >> "$TOOLS_DIR/bin/dtc"
-              echo 'fi' >> "$TOOLS_DIR/bin/dtc"
-              
-              chmod +x "$TOOLS_DIR/bin/dtc"
-              echo "✅ Патч-перехватчик DTC успешно применен через echo"
-            fi
-
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            
+            # Шаг 1: Генерируем дефконфиг
+            make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
+
+            # Шаг 2: Пробиваем этап DTBS. Флаг -i заставит пропустить кривые чужие dts, не останавливая процесс!
+            echo "🎯 Компилирую дерево устройств (ошибки сторонних платформ игнорируются)..."
+            make -i -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CC="ccache clang" HOSTCC="ccache clang" \
+              AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
+              dtbs || true
+
+            # Шаг 3: Основная сборка самого ядра (здесь ошибки уже не игнорируем)
+            echo "🚀 Запускаю финальную сборку образа ядра..."
             make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CC="ccache clang" HOSTCC="ccache clang" \
@@ -511,7 +497,7 @@ jobs:
               RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
               PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
               KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" \
-              gki_defconfig all
+              all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
@@ -537,3 +523,4 @@ jobs:
           
           ccache -s
           echo "✅ Процесс сборки завершен!"
+          
