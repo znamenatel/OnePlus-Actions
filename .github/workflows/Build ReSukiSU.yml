@@ -460,16 +460,20 @@ jobs:
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          # Функция для инжекта заголовков SUSFS
-          inject_susfs() {
+          # Функция автоматического инжекта заголовков SUSFS (решение проблемы implicit declaration)
+          inject_susfs_headers() {
+            echo "🎯 Проверяю файлы ядра на необходимость инжекта заголовков SUSFS..."
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            echo "🎯 Инжект заголовков SUSFS в файлы..."
             for file in fs/open.c fs/stat.c fs/namei.c; do
               if [ -f "$file" ]; then
                 if ! grep -q "<linux/susfs.h>" "$file"; then
                   sed -i '1i #include <linux/susfs.h>' "$file"
-                  echo "✅ Добавлено в $file"
+                  echo "✅ Заголовок успешно добавлен в файл: $file"
+                else
+                  echo "ℹ️ Заголовок уже присутствует в: $file"
                 fi
+              else
+                echo "⚠️ Предупреждение: Файл $file не найден по текущему пути!"
               fi
             done
           }
@@ -477,44 +481,65 @@ jobs:
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
             sudo apt update && sudo apt install -y libelf-dev clang lld llvm ccache
             
-            # Настройка путей для LLVM
+            # Конфигурация системного LLVM окружения
             mkdir -p $GITHUB_WORKSPACE/sys_bin
+            SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
+            echo "🤖 Используется системный LLVM версии: $SYS_LLVM_VER"
+            
             for tool in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-strip; do
-              ln -sf /usr/bin/$tool-$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}') $GITHUB_WORKSPACE/sys_bin/$tool
+              ln -sf /usr/bin/$tool-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/$tool
             done
             export PATH="$GITHUB_WORKSPACE/sys_bin:$PATH"
 
-            # Умный перехватчик DTC
+            # Перехватчик DTC (Device Tree Compiler) для предотвращения сбоев компиляции non-GKI
             TOOLS_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/kernel-build-tools/linux-x86"
             if [ -f "$TOOLS_DIR/bin/dtc" ]; then
-              mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
-              echo -e '#!/bin/bash\nif echo "$@" | grep -q "sm8650"; then exec "$(dirname "$0")/dtc.orig" "$@"; else exit 0; fi' > "$TOOLS_DIR/bin/dtc"
+              if [ ! -f "$TOOLS_DIR/bin/dtc.orig" ]; then
+                mv "$TOOLS_DIR/bin/dtc" "$TOOLS_DIR/bin/dtc.orig"
+              fi
+              echo '#!/bin/bash' > "$TOOLS_DIR/bin/dtc"
+              echo 'if echo "$@" | grep -q "sm8650"; then exec "$(dirname "$0")/dtc.orig" "$@"; else exit 0; fi' >> "$TOOLS_DIR/bin/dtc"
               chmod +x "$TOOLS_DIR/bin/dtc"
+              echo "✅ Патч-перехватчик DTC успешно применен"
             fi
 
-            inject_susfs
+            inject_susfs_headers
             
-            make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CC="ccache clang" HOSTCC="ccache clang" \
               AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
+              HOSTAR="llvm-ar" HOSTNM="llvm-nm" HOSTLD="ld.lld" \
+              RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+              PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
               KCFLAGS="-O2 -Wno-error" HOSTCFLAGS="-Wno-error" \
               gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
-            cd kernel_workspace/kernel_platform/common
-            inject_susfs
-            make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- O=out gki_defconfig all
+            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+            export PATH="/usr/lib/ccache:$PATH"
+            sudo apt install -y libelf-dev
+            inject_susfs_headers
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig all
 
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
-            cd kernel_workspace/kernel_platform/common
-            inject_susfs
-            make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- O=out gki_defconfig all
+            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+            export PATH="/usr/lib/ccache:$PATH"
+            sudo apt install -y libelf-dev
+            inject_susfs_headers
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
             
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
-            cd kernel_workspace/kernel_platform/common
-            inject_susfs
-            make -j$(nproc) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- O=out gki_defconfig all
+            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+            export PATH="/usr/lib/ccache:$PATH"
+            sudo apt install -y libelf-dev
+            inject_susfs_headers
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+            make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all
           fi
           
-          echo "✅ Сборка завершена"
+          ccache -s
+          echo "✅ Процесс сборки успешно завершен!"
