@@ -460,7 +460,7 @@ jobs:
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          # Убираем -include из глобальных флагов во избежание циклических ошибок подготовки
+          # Чистые флаги без опасных глобальных -include
           EXTRA_CFLAGS="-O2 -Wno-error"
 
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
@@ -476,15 +476,15 @@ jobs:
 
             cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
 
-            # 🔥 ТОЧЕЧНЫЙ ПАТЧ: Внедряем инклуд строго в нужные файлы исходников
-            echo "🔧 Внедряю инклуды SUSFS непосредственно в open.c и sched.h..."
+            # 🔥 ТОЧЕЧНЫЙ ПАТЧ: внедряем строго в файлы VFS, не трогая системный sched.h
+            echo "🔧 Внедряю инклуды SUSFS в файлы файловой системы..."
             if [ -f "fs/open.c" ]; then
               sed -i '1s/^/#include <linux\/susfs.h>\n/' fs/open.c
-              echo "✅ fs/open.c пропатчен"
+              echo "✅ fs/open.c успешно пропатчен"
             fi
-            if [ -f "include/linux/sched.h" ]; then
-              sed -i '1s/^/#include <linux\/susfs.h>\n/' include/linux/sched.h
-              echo "✅ include/linux/sched.h пропатчен"
+            if [ -f "fs/dcache.c" ]; then
+              sed -i '1s/^/#include <linux\/susfs.h>\n/' fs/dcache.c
+              echo "✅ fs/dcache.c успешно пропатчен"
             fi
 
             # Шаг 1: Генерируем дефконфиг
