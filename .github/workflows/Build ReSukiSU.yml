@@ -454,7 +454,7 @@ jobs:
           echo "⚡ Remove check_defconfig"
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "✅ 内核配置更新完成"
-     -- name: "🔨 Build Kernel | 编译内核"
+      - name: "🔨 Build Kernel | 编译内核"
         run: |
           echo "🏗️ Начинаю сборку ядра..."
           export KBUILD_BUILD_USER="xiaoxiaow"
