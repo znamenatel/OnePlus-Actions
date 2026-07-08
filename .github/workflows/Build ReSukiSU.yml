@@ -627,10 +627,26 @@ jobs:
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
           
-          # Переходим в директорию платформы сборки
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          # Переходим в главный корень рабочего пространства
+          cd $GITHUB_WORKSPACE/kernel_workspace
           
-          # 🔥 Запуск компиляции ядра с отключенной принудительной проверкой дефконфигов
-          LTO=thin ./build/build.sh
+          # Автоматический поиск скрипта компиляции в структуре репозитория
+          if [ -f "./kernel_platform/build/build.sh" ]; then
+            echo "✅ Скрипт сборки обнаружен в: ./kernel_platform/build/build.sh"
+            cd kernel_platform && LTO=thin ./build/build.sh
+          elif [ -f "./build/build.sh" ]; then
+            echo "✅ Скрипт сборки обнаружен в корне: ./build/build.sh"
+            LTO=thin ./build/build.sh
+          elif [ -f "./kernel_platform/build.sh" ]; then
+            echo "✅ Скрипт сборки обнаружен в: ./kernel_platform/build.sh"
+            cd kernel_platform && LTO=thin ./build.sh
+          else
+            echo "❌ Критическая ошибка: не удалось найти build.sh ни в одной из стандартных папок!"
+            echo "Вывожу структуру директорий для отладки:"
+            ls -la
+            echo "--- Содержимое kernel_platform ---"
+            ls -la kernel_platform/
+            exit 1
+          fi
           
-          echo "✅ Процесс компиляции завершен!"
+          echo "✅ Процесс компиляции успешно завершен!"
