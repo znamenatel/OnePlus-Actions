@@ -402,7 +402,11 @@ jobs:
             rm patch_mm.py
             
             echo "📦 Применяю SUSFS патч к остальным системным файлам..."
-            patch -p1 -F 3 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
+            if ! patch -p1 -F 3 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch; then
+              echo "⚠️ Обнаружены конфликты в VFS/Procfs! Вывожу содержимое всех .rej файлов:"
+              find . -name "*.rej" -exec echo "--- Файл: {} ---" \; -exec cat {} \;
+              exit 1
+            fi
           else
             echo "📦 应用MANUAL_HOOK补丁..."
             patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
