@@ -290,14 +290,17 @@ jobs:
 
             patch_name = "50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch"
 
-            # 1. Вырезаем mm/memory.c из общего файла патча, чтобы убрать конфликты
+            # 1. Вырезаем все конфликтные файлы из общего патча, чтобы утилита patch на них не спотыкалась
             if os.path.exists(patch_name):
                 with open(patch_name, "r") as f:
                     lines = f.readlines()
                 new_lines = []
                 skip = False
                 for line in lines:
-                    if line.startswith("diff --git a/mm/memory.c") or line.startswith("diff --git a/common/mm/memory.c"):
+                    if (line.startswith("diff --git a/mm/memory.c") or line.startswith("diff --git a/common/mm/memory.c") or
+                        line.startswith("diff --git a/fs/namespace.c") or line.startswith("diff --git a/common/fs/namespace.c") or
+                        line.startswith("diff --git a/fs/stat.c") or line.startswith("diff --git a/common/fs/stat.c") or
+                        line.startswith("diff --git a/fs/proc/task_mmu.c") or line.startswith("diff --git a/common/fs/proc/task_mmu.c")):
                         skip = True
                     elif line.startswith("diff --git "):
                         skip = False
@@ -305,18 +308,14 @@ jobs:
                         new_lines.append(line)
                 with open(patch_name, "w") as f:
                     f.writelines(new_lines)
-                print("✅ Из файла патча успешно удалена конфликтная секция mm/memory.c")
+                print("✅ Из файла патча успешно удалены конфликтные секции VFS и Procfs")
 
-            # 2. Внедряем SUSFS в mm/memory.c вручную, обходя любые проблемы с переносом строк
+            # 2. Внедряем SUSFS в mm/memory.c вручную
             if os.path.exists("mm/memory.c"):
                 with open("mm/memory.c", "r") as f:
                     code = f.read()
-                
-                # Добавляем заголовок susfs.h, если его ещё нет
                 if "#include <linux/susfs.h>" not in code:
                     code = code.replace("#include <linux/memory.h>", "#include <linux/memory.h>\n#include <linux/susfs.h>")
-                
-                # Чистый блок без табов — только стандартные пробелы
                 susfs_block = (
                     "#ifdef CONFIG_KSU_SUSFS_SUS_MAP\n"
                     "        struct page *page = NULL;\n\n"
@@ -327,19 +326,88 @@ jobs:
                     "        struct page *page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);\n"
                     "#endif"
                 )
-                
-                # Ищем целевую функцию с гибким регулярным выражением (кушает любые пробелы и новые строки)
                 pattern = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\(\s*mm\s*,\s*addr\s*,\s*\n?\s*gup_flags\s*,\s*&vma\s*\)\s*;"
                 code, count = re.subn(pattern, susfs_block, code)
-                
-                # Если не нашлось базовым поиском, пробуем запасной (более широкий) вариант
                 if count == 0:
                     pattern_fallback = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\([^;]+&vma\s*\)\s*;"
                     code, count = re.subn(pattern_fallback, susfs_block, code)
-                    
                 with open("mm/memory.c", "w") as f:
                     f.write(code)
-                print(f"✅ Файл mm/memory.c успешно модифицирован напрямую. Замен: {count}")
+                print(f"✅ Файл mm/memory.c изменен напрямую. Замен: {count}")
+
+            # 3. Внедряем SUSFS в fs/namespace.c вручную
+            if os.path.exists("fs/namespace.c"):
+                with open("fs/namespace.c", "r") as f:
+                    code = f.read()
+                if "CONFIG_KSU_SUSFS_SUS_MOUNT" not in code:
+                    code = code.replace(
+                        "#include <linux/mnt_idmapping.h>",
+                        "#include <linux/mnt_idmapping.h>\n#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux/susfs_def.h>\n#endif"
+                    )
+                    susfs_ns_block = (
+                        "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n"
+                        "extern bool susfs_is_current_ksu_domain(void);\n"
+                        "extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\n\n"
+                        "#define CL_COPY_MNT_NS_BIT(25) /* used by copy_mnt_ns() */\n\n"
+                        "#endif\n\n"
+                    )
+                    code = code.replace("static unsigned int sysctl_mount_max", susfs_ns_block + "static unsigned int sysctl_mount_max")
+                with open("fs/namespace.c", "w") as f:
+                    f.write(code)
+                print("✅ Файл fs/namespace.c успешно модифицирован напрямую")
+
+            # 4. Внедряем SUSFS в fs/stat.c вручную
+            if os.path.exists("fs/stat.c"):
+                with open("fs/stat.c", "r") as f:
+                    code = f.read()
+                if "CONFIG_KSU_SUSFS_SUS_KSTAT" not in code:
+                    pattern_stat = r"if\s*\(\s*inode\s*->\s*i_op\s*->\s*getattr\s*\)\s*return\s+inode\s*->\s*i_op\s*->\s*getattr\s*\(\s*idmap\s*,\s*path\s*,\s*stat\s*,\s*request_mask\s*,\s*query_flags\s*\|\s*AT_GETATTR_NOSEC\s*\)\s*;"
+                    susfs_stat_block = (
+                        "if (inode->i_op->getattr)\n"
+                        "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n"
+                        "\t{\n"
+                        "\t\tint err = inode->i_op->getattr(idmap, path, stat,\n"
+                        "\t\t\t\t\t\t request_mask,\n"
+                        "\t\t\t\t\t\t query_flags | AT_GETATTR_NOSEC);\n"
+                        "\t\tif (!err)\n"
+                        "\t\t\tsusfs_sys_kstat_spoof_generic_fillattr(inode, stat);\n"
+                        "\t\treturn err;\n"
+                        "\t}\n"
+                        "#else\n"
+                        "\t\treturn inode->i_op->getattr(idmap, path, stat,\n"
+                        "\t\t\t\t\t\t     request_mask,\n"
+                        "\t\t\t\t\t\t     query_flags | AT_GETATTR_NOSEC);\n"
+                        "#endif"
+                    )
+                    code, count = re.subn(pattern_stat, susfs_stat_block, code)
+                    print(f"✅ Файл fs/stat.c изменен напрямую. Замен: {count}")
+                with open("fs/stat.c", "w") as f:
+                    f.write(code)
+
+            # 5. Внедряем SUSFS в fs/proc/task_mmu.c вручную
+            if os.path.exists("fs/proc/task_mmu.c"):
+                with open("fs/proc/task_mmu.c", "r") as f:
+                    code = f.read()
+                if "CONFIG_KSU_SUSFS_SUS_MAP" not in code:
+                    pattern_mmu = r"/\*\s*Case\s+4\s+above\s*\*/\s*if\s*\(\s*vma\s*->\s*vm_end\s*>\s*last_vma_end\s*\)\s*\{\s*smap_gather_stats\s*\(\s*vma\s*,\s*&mss\s*,\s*last_vma_end\s*\)\s*;\s*last_vma_end\s*=\s*vma\s*->\s*vm_end\s*;\s*\}"
+                    susfs_mmu_block = (
+                        "/* Case 4 above */\n"
+                        "\t\tif (vma->vm_end > last_vma_end) {\n"
+                        "#ifdef CONFIG_KSU_SUSFS_SUS_MAP\n"
+                        "\t\t\tif (!vma->vm_file || !(SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))) {\n"
+                        "\t\t\t\tsmap_gather_stats(vma, &mss, last_vma_end);\n"
+                        "\t\t\t\tlast_vma_end = vma->vm_end;\n"
+                        "\t\t\t}\n"
+                        "#else\n"
+                        "\t\t\tsmap_gather_stats(vma, &mss, last_vma_end);\n"
+                        "\t\t\tlast_vma_end = vma->vm_end;\n"
+                        "#endif\n"
+                        "\t\t}"
+                    )
+                    code, count = re.subn(pattern_mmu, susfs_mmu_block, code)
+                    print(f"✅ Файл fs/proc/task_mmu.c изменен напрямую. Замен: {count}")
+                with open("fs/proc/task_mmu.c", "w") as f:
+                    f.write(code)
         run: |
           cd kernel_workspace
           echo "⬇️ 克隆所需补丁..."
@@ -396,14 +464,14 @@ jobs:
           fi
           
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            echo "🛠️ Запуск умного пре-патчинга mm/memory.c через Python..."
-            printenv PYTHON_PATCH_SCRIPT > patch_mm.py
-            python3 patch_mm.py
-            rm patch_mm.py
+            echo "🛠️ Запуск комплексного пре-патчинга VFS/Procfs через Python..."
+            printenv PYTHON_PATCH_SCRIPT > patch_all.py
+            python3 patch_all.py
+            rm patch_all.py
             
             echo "📦 Применяю SUSFS патч к остальным системным файлам..."
             if ! patch -p1 -F 3 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch; then
-              echo "⚠️ Обнаружены конфликты в VFS/Procfs! Вывожу содержимое всех .rej файлов:"
+              echo "⚠️ Всё ещё есть непредвиденные конфликты! Вывожу .rej логи:"
               find . -name "*.rej" -exec echo "--- Файл: {} ---" \; -exec cat {} \;
               exit 1
             fi
