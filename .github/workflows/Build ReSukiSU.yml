@@ -623,29 +623,22 @@ jobs:
 
       - name: "🔨 Build Kernel | 编译内核"
         run: |
-          echo "🏗️ Начинаю сборку ядра..."
+          echo "🏗️ Начинаю сборку ядра через Bazel / Kleaf..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
           
-          # Переходим в главный корень рабочего пространства
+          # Переходим в корень рабочего пространства
           cd $GITHUB_WORKSPACE/kernel_workspace
           
-          # Автоматический поиск скрипта компиляции в структуре репозитория
-          if [ -f "./kernel_platform/build/build.sh" ]; then
-            echo "✅ Скрипт сборки обнаружен в: ./kernel_platform/build/build.sh"
-            cd kernel_platform && LTO=thin ./build/build.sh
-          elif [ -f "./build/build.sh" ]; then
-            echo "✅ Скрипт сборки обнаружен в корне: ./build/build.sh"
-            LTO=thin ./build/build.sh
-          elif [ -f "./kernel_platform/build.sh" ]; then
-            echo "✅ Скрипт сборки обнаружен в: ./kernel_platform/build.sh"
-            cd kernel_platform && LTO=thin ./build.sh
+          # Проверяем наличие Bazel-скрипта и запускаем компиляцию
+          if [ -f "./kernel_platform/build_with_bazel.py" ]; then
+            echo "✅ Обнаружен скрипт сборки Bazel. Запускаю компиляцию для модели ${{ github.event.inputs.FEIL }}..."
+            
+            # Основная команда сборки современных ядер OnePlus/Realme
+            python3 ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.FEIL }}
+            
           else
-            echo "❌ Критическая ошибка: не удалось найти build.sh ни в одной из стандартных папок!"
-            echo "Вывожу структуру директорий для отладки:"
-            ls -la
-            echo "--- Содержимое kernel_platform ---"
-            ls -la kernel_platform/
+            echo "❌ Критическая ошибка: не найден скрипт build_with_bazel.py!"
             exit 1
           fi
           
