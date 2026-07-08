@@ -585,12 +585,22 @@ jobs:
           
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
-          echo "🔍 [ИНФО] Сканирую дерево Bazel на наличие доступных целей компиляции..."
+          echo "🔍 [ШАГ 1] Получаю точный список целей из дерева Bazel..."
+          TARGETS=$(./tools/bazel query "attr(generator_function, define_msm_platforms, msm-kernel/...)" 2>/dev/null || true)
           echo "======================================================================="
-          ./tools/bazel query "attr(generator_function, define_msm_platforms, msm-kernel/...)" || true
+          echo "$TARGETS"
           echo "======================================================================="
           
-          echo "🚀 [ЗАПУСК] Пробую скомпилировать стандартную цель платформы: pineapple gki"
-          python3 ./build_with_bazel.py -t pineapple gki
+          echo "🚀 [ШАГ 2] Автоматический подбор цели и запуск компиляции..."
+          if echo "$TARGETS" | grep -q "pineapple_consolidated"; then
+            echo "🎯 Найдена оптимальная цель: pineapple_consolidated. Запускаю сборку..."
+            python3 ./build_with_bazel.py -t pineapple_consolidated default
+          elif echo "$TARGETS" | grep -q "pineapple"; then
+            echo "🎯 Найдена базовая цель: pineapple. Запускаю сборку..."
+            python3 ./build_with_bazel.py -t pineapple default
+          else
+            echo "⚠️ Кодовое имя не распознано автоматически. Пробую стандартный Qualcomm-вариант..."
+            python3 ./build_with_bazel.py -t pineapple default
+          fi
           
           echo "✅ Процесс компиляции успешно завершен!"
