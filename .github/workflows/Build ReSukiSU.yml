@@ -283,6 +283,63 @@ jobs:
           echo "✅ ReSukiSU 配置完成"
 
       - name: "🔧 Setup Patches | 配置补丁"
+        env:
+          PYTHON_PATCH_SCRIPT: |
+            import re
+            import os
+
+            patch_name = "50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch"
+
+            # 1. Вырезаем mm/memory.c из общего файла патча, чтобы убрать конфликты
+            if os.path.exists(patch_name):
+                with open(patch_name, "r") as f:
+                    lines = f.readlines()
+                new_lines = []
+                skip = False
+                for line in lines:
+                    if line.startswith("diff --git a/mm/memory.c") or line.startswith("diff --git a/common/mm/memory.c"):
+                        skip = True
+                    elif line.startswith("diff --git "):
+                        skip = False
+                    if not skip:
+                        new_lines.append(line)
+                with open(patch_name, "w") as f:
+                    f.writelines(new_lines)
+                print("✅ Из файла патча успешно удалена конфликтная секция mm/memory.c")
+
+            # 2. Внедряем SUSFS в mm/memory.c вручную, обходя любые проблемы с переносом строк
+            if os.path.exists("mm/memory.c"):
+                with open("mm/memory.c", "r") as f:
+                    code = f.read()
+                
+                # Добавляем заголовок susfs.h, если его ещё нет
+                if "#include <linux/susfs.h>" not in code:
+                    code = code.replace("#include <linux/memory.h>", "#include <linux/memory.h>\n#include <linux/susfs.h>")
+                
+                # Чистый блок без табов — только стандартные пробелы
+                susfs_block = (
+                    "#ifdef CONFIG_KSU_SUSFS_SUS_MAP\n"
+                    "        struct page *page = NULL;\n\n"
+                    "        if (vma && vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))\n"
+                    "            break;\n\n"
+                    "        page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);\n"
+                    "#else\n"
+                    "        struct page *page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);\n"
+                    "#endif"
+                )
+                
+                # Ищем целевую функцию с гибким регулярным выражением (кушает любые пробелы и новые строки)
+                pattern = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\(\s*mm\s*,\s*addr\s*,\s*\n?\s*gup_flags\s*,\s*&vma\s*\)\s*;"
+                code, count = re.subn(pattern, susfs_block, code)
+                
+                # Если не нашлось базовым поиском, пробуем запасной (более широкий) вариант
+                if count == 0:
+                    pattern_fallback = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\([^;]+&vma\s*\)\s*;"
+                    code, count = re.subn(pattern_fallback, susfs_block, code)
+                    
+                with open("mm/memory.c", "w") as f:
+                    f.write(code)
+                print(f"✅ Файл mm/memory.c успешно модифицирован напрямую. Замен: {count}")
         run: |
           cd kernel_workspace
           echo "⬇️ 克隆所需补丁..."
@@ -325,7 +382,6 @@ jobs:
           if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
             echo "📦 应用lz4补丁..."
             git apply -p1 < 001-lz4.patch || true
-            # patch -p1 < 002-zstd.patch || true
           fi
           if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
             echo "📦 应用lz4补丁..."
@@ -338,72 +394,20 @@ jobs:
             cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
-
+          
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
             echo "🛠️ Запуск умного пре-патчинга mm/memory.c через Python..."
-            python3 << 'EOF'
-          import re
-          import os
-
-          patch_name = "50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch"
-
-          # 1. Вырезаем mm/memory.c из общего файла патча, чтобы убрать конфликты
-          if os.path.exists(patch_name):
-              with open(patch_name, "r") as f:
-                  lines = f.readlines()
-              new_lines = []
-              skip = False
-              for line in lines:
-                  if line.startswith("diff --git a/mm/memory.c") or line.startswith("diff --git a/common/mm/memory.c"):
-                      skip = True
-                  elif line.startswith("diff --git "):
-                      skip = False
-                  if not skip:
-                      new_lines.append(line)
-              with open(patch_name, "w") as f:
-                  f.writelines(new_lines)
-              print("✅ Из файла патча успешно удалена конфликтная секция mm/memory.c")
-
-          # 2. Внедряем SUSFS в mm/memory.c вручную, обходя любые проблемы с переносом строк
-          if os.path.exists("mm/memory.c"):
-              with open("mm/memory.c", "r") as f:
-                  code = f.read()
-
-              # Добавляем заголовок susfs.h, если его ещё нет
-              if "#include <linux/susfs.h>" not in code:
-                  code = code.replace("#include <linux/memory.h>", "#include <linux/memory.h>\n#include <linux/susfs.h>")
-
-              susfs_block = """#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-                    struct page *page = NULL;
-
-                    if (vma && vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
-                        break;
-
-                    page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);
-          #else
-                    struct page *page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);
-          #endif"""
-
-              # Ищем целевую функцию с гибким регулярным выражением (кушает любые пробелы и новые строки)
-              pattern = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\(\s*mm\s*,\s*addr\s*,\s*\n?\s*gup_flags\s*,\s*&vma\s*\)\s*;"
-              code, count = re.subn(pattern, susfs_block, code)
-
-              # Если не нашлось базовым поиском, пробуем запасной (более широкий) вариант
-              if count == 0:
-                  pattern_fallback = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\([^;]+&vma\s*\)\s*;"
-                  code, count = re.subn(pattern_fallback, susfs_block, code)
-
-              with open("mm/memory.c", "w") as f:
-                  f.write(code)
-              print(f"✅ Файл mm/memory.c успешно модифицирован напрямую. Замен: {count}")
-                EOF
+            printenv PYTHON_PATCH_SCRIPT > patch_mm.py
+            python3 patch_mm.py
+            rm patch_mm.py
+            
             echo "📦 Применяю SUSFS патч к остальным системным файлам..."
             patch -p1 -F 3 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
           else
             echo "📦 应用MANUAL_HOOK补丁..."
             patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
           fi
-
+          
           echo "🩹 Проверяю и чиню avc_has_perm в hooks.c..."
           HOOKS_FILE="security/selinux/hooks.c"
           if [ -f "$HOOKS_FILE" ]; then
@@ -415,7 +419,6 @@ jobs:
             fi
           fi
           echo "✅ 所有补丁应用完成"
-
       - name: Apply SCHED Patch | 应用风驰补丁
         if: ${{ github.event.inputs.FEIL != 'gt5pro' && false }}
         run: |
