@@ -167,16 +167,19 @@ jobs:
           echo "CCACHE_DIR=$HOME/.ccache_${{ github.event.inputs.FEIL }}_ReSukiSU" >> $GITHUB_ENV
           mkdir -p "$HOME/.ccache_${{ github.event.inputs.FEIL }}_ReSukiSU"
           echo "✅ 缓存目录已设置: $HOME/.ccache_${{ github.event.inputs.FEIL }}_ReSukiSU"
+
       - name: "🔐 Configure Git | 配置Git账户"
         run: |
           echo "🔧 正在配置Git用户信息..."
           git config --global user.name "build"
           git config --global user.email "2210077278@qq.com"
           echo "✅ Git配置完成"
+
       - name: "📦 Install Dependencies | 安装构建依赖"
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 git curl ccache libelf-dev build-essential flex bison libssl-dev libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk dos2unix clang lld device-tree-compiler
+
       - name: "💾 Restore ccache (With SUSFS) | 恢复ccache缓存 (With SUSFS)"
         if: ${{ github.event.inputs.SUSFS == 'On' }}
         uses: actions/cache@v5
@@ -186,6 +189,7 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-ReSukiSU-SUSFS
             ccache-${{ runner.os }}-ReSukiSU-SUSFS
+
       - name: "💾 Restore ccache (Without SUSFS) | 恢复ccache缓存 (Without SUSFS)"
         if: ${{ github.event.inputs.SUSFS == 'Off' }}
         uses: actions/cache@v5
@@ -195,6 +199,7 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-ReSukiSU-NoSUSFS
             ccache-${{ runner.os }}-ReSukiSU-NoSUSFS
+
       - name: "⚙️ Initialize ccache | 初始化ccache"
         run: |
           echo "🔧 正在初始化ccache..."
@@ -214,6 +219,7 @@ jobs:
           # 显示缓存统计
           ccache -s
           echo "✅ ccache初始化流程完成"
+
       - name: "📥 Install Repo Tool | 安装Repo工具"
         run: |
           echo "⬇️ 正在下载repo工具..."
@@ -221,6 +227,7 @@ jobs:
           chmod a+x ~/repo
           sudo mv ~/repo /usr/local/bin/repo
           echo "✅ repo工具安装完成"
+
       - name: "⬇️ Clone Kernel Source | 克隆内核源码"
         run: |
           mkdir kernel_workspace && cd kernel_workspace
@@ -254,6 +261,7 @@ jobs:
             sed -i 's/${scm_version}//' kernel_platform/msm-kernel/scripts/setlocalversion
           fi
           echo "✅ 内核配置完成"
+
       - name: "⚡ Setup Baseband-guard | 配置 Baseband-guard"
         if: ${{ github.event.inputs.bbg == 'On' && github.event.inputs.KPM == 'Off' }}
         run: |
@@ -262,6 +270,7 @@ jobs:
           echo "🛠️ 正在设置BBG..."
           curl -sSL https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh -o setup.sh
           bash setup.sh
+
       - name: "⚡ Setup ReSukiSU | 配置 ReSukiSU"
         run: |
           cd kernel_workspace/kernel_platform
@@ -272,6 +281,7 @@ jobs:
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 30700)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           echo "✅ ReSukiSU 配置完成"
+
       - name: "🔧 Setup Patches | 配置补丁"
         run: |
           cd kernel_workspace
@@ -328,72 +338,72 @@ jobs:
             cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
-          
+
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
             echo "🛠️ Запуск умного пре-патчинга mm/memory.c через Python..."
             python3 << 'EOF'
-import re
-import os
+          import re
+          import os
 
-patch_name = "50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch"
+          patch_name = "50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch"
 
-# 1. Вырезаем mm/memory.c из общего файла патча, чтобы убрать конфликты
-if os.path.exists(patch_name):
-    with open(patch_name, "r") as f:
-        lines = f.readlines()
-    new_lines = []
-    skip = False
-    for line in lines:
-        if line.startswith("diff --git a/mm/memory.c") or line.startswith("diff --git a/common/mm/memory.c"):
-            skip = True
-        elif line.startswith("diff --git "):
-            skip = False
-        if not skip:
-            new_lines.append(line)
-    with open(patch_name, "w") as f:
-        f.writelines(new_lines)
-    print("✅ Из файла патча успешно удалена конфликтная секция mm/memory.c")
+          # 1. Вырезаем mm/memory.c из общего файла патча, чтобы убрать конфликты
+          if os.path.exists(patch_name):
+              with open(patch_name, "r") as f:
+                  lines = f.readlines()
+              new_lines = []
+              skip = False
+              for line in lines:
+                  if line.startswith("diff --git a/mm/memory.c") or line.startswith("diff --git a/common/mm/memory.c"):
+                      skip = True
+                  elif line.startswith("diff --git "):
+                      skip = False
+                  if not skip:
+                      new_lines.append(line)
+              with open(patch_name, "w") as f:
+                  f.writelines(new_lines)
+              print("✅ Из файла патча успешно удалена конфликтная секция mm/memory.c")
 
-# 2. Внедряем SUSFS в mm/memory.c вручную, обходя любые проблемы с переносом строк
-if os.path.exists("mm/memory.c"):
-    with open("mm/memory.c", "r") as f:
-        code = f.read()
-    
-    # Добавляем заголовок susfs.h, если его ещё нет
-    if "#include <linux/susfs.h>" not in code:
-        code = code.replace("#include <linux/memory.h>", "#include <linux/memory.h>\n#include <linux/susfs.h>")
-    
-    susfs_block = """#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-		struct page *page = NULL;
+          # 2. Внедряем SUSFS в mm/memory.c вручную, обходя любые проблемы с переносом строк
+          if os.path.exists("mm/memory.c"):
+              with open("mm/memory.c", "r") as f:
+                  code = f.read()
 
-		if (vma && vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
-			break;
+              # Добавляем заголовок susfs.h, если его ещё нет
+              if "#include <linux/susfs.h>" not in code:
+                  code = code.replace("#include <linux/memory.h>", "#include <linux/memory.h>\n#include <linux/susfs.h>")
 
-		page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);
-#else
-		struct page *page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);
-#endif"""
-    
-    # Ищем целевую функцию с гибким регулярным выражением (кушает любые пробелы и новые строки)
-    pattern = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\(\s*mm\s*,\s*addr\s*,\s*\n?\s*gup_flags\s*,\s*&vma\s*\)\s*;"
-    code, count = re.subn(pattern, susfs_block, code)
-    
-    # Если не нашлось базовым поиском, пробуем запасной (более широкий) вариант
-    if count == 0:
-        pattern_fallback = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\([^;]+&vma\s*\)\s*;"
-        code, count = re.subn(pattern_fallback, susfs_block, code)
-        
-    with open("mm/memory.c", "w") as f:
-        f.write(code)
-    print(f"✅ Файл mm/memory.c успешно модифицирован напрямую. Замен: {count}")
-EOF
+              susfs_block = """#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+                    struct page *page = NULL;
+
+                    if (vma && vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+                        break;
+
+                    page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);
+          #else
+                    struct page *page = get_user_page_vma_remote(mm, addr, gup_flags, &vma);
+          #endif"""
+
+              # Ищем целевую функцию с гибким регулярным выражением (кушает любые пробелы и новые строки)
+              pattern = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\(\s*mm\s*,\s*addr\s*,\s*\n?\s*gup_flags\s*,\s*&vma\s*\)\s*;"
+              code, count = re.subn(pattern, susfs_block, code)
+
+              # Если не нашлось базовым поиском, пробуем запасной (более широкий) вариант
+              if count == 0:
+                  pattern_fallback = r"struct page\s*\*page\s*=\s*get_user_page_vma_remote\s*\([^;]+&vma\s*\)\s*;"
+                  code, count = re.subn(pattern_fallback, susfs_block, code)
+
+              with open("mm/memory.c", "w") as f:
+                  f.write(code)
+              print(f"✅ Файл mm/memory.c успешно модифицирован напрямую. Замен: {count}")
+                EOF
             echo "📦 Применяю SUSFS патч к остальным системным файлам..."
             patch -p1 -F 3 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
           else
             echo "📦 应用MANUAL_HOOK补丁..."
             patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
           fi
-          
+
           echo "🩹 Проверяю и чиню avc_has_perm в hooks.c..."
           HOOKS_FILE="security/selinux/hooks.c"
           if [ -f "$HOOKS_FILE" ]; then
@@ -405,6 +415,7 @@ EOF
             fi
           fi
           echo "✅ 所有补丁应用完成"
+
       - name: Apply SCHED Patch | 应用风驰补丁
         if: ${{ github.event.inputs.FEIL != 'gt5pro' && false }}
         run: |
@@ -431,12 +442,13 @@ EOF
             patch -p1 -F 3 < hmbird_patch.patch
             echo "✅ OGKI转换GKI_patch完成"
           fi
+
           - name: "⚙️ Configure Kernel Options | 配置内核选项"
           run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "⚙️ 正在配置内核选项..."
           echo "📦 启用 KSU 支持..."
-          
+
           # Скачиваем скрипт по твоей точной рабочей ссылке из файла
           curl -L -o resukisu_setup.bin https://github.com/Xiaomichael/OnePlus-Actions/raw/Build/script/resukisu_setup.bin
           chmod +x resukisu_setup.bin
@@ -460,17 +472,17 @@ EOF
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           echo "⚡ 添加对 Mountify 的支持"
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
+
           if [ "${{ github.event.inputs.bbg }}" == "On" ] && [ "${{ github.event.inputs.KPM }}" == "Off" ]; then
             echo "⚡ 配置 BBG 中..."
             echo 'CONFIG_BBG=y' >> ./common/arch/arm64/configs/gki_defconfig
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           if [ "${{ github.event.inputs.bbr }}" == "On" ]; then
             echo "🌐 启用 BBR 网络算法..."
             echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -480,19 +492,19 @@ EOF
             echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
             echo "📦 启用 lz4kd压缩..."
             echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_ZRAM_WRITEBACK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
             echo "📦 为6.1 / 6.6加入O2优化..."
             echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           if [ "${{ github.event.inputs.proxy }}" == "On" ]; then
             echo "📦 加入代理优化..."
             echo "CONFIG_BPF_STREAM_PARSER=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -519,7 +531,7 @@ EOF
             echo "CONFIG_IP6_NF_NAT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ]; then
             echo "📦 正在为5.10 / 5.15系配置lto中..."
             DEFCONFIG=./common/arch/arm64/configs/gki_defconfig
@@ -528,83 +540,16 @@ EOF
             sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG"
             grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG"
           fi
-          
+
           echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "⚡ Remove check_defconfig"
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "✅ 内核配置更新完成"
+
       - name: "🔨 Build Kernel | 编译内核"
         run: |
           echo "🏗️ Начинаю сборку ядра..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
 
-          # 🔥 ТОТАЛЬНЫЙ ОБХОД БЛОКИРОВОК КЕРНЕЛСУ: глушим фатальные ошибки и в .mk, и в Kbuild
-          echo "🔧 Отключаю жесткие блокировки KernelSU/ReSukiSU..."
-          find $GITHUB_WORKSPACE -name "inline_hook_check.mk" -exec sed -i 's/\$(error/\$(warning/g' {} \; -exec echo "✅ Проверка хуков ослаблена: {}" \; || true
-          find $GITHUB_WORKSPACE -name "Kbuild" -path "*/kernelsu/*" -exec sed -i 's/\$(error/\$(warning/g' {} \; -exec echo "✅ Проверка Kbuild ослаблена: {}" \; || true
-
-          # Чистые флаги компилятора
-          EXTRA_CFLAGS="-O2 -Wno-error"
-
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            sudo apt update && sudo apt install -y libelf-dev clang lld llvm ccache
-            
-            # Настройка путей компилятора LLVM
-            mkdir -p $GITHUB_WORKSPACE/sys_bin
-            SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
-            for tool in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-strip; do
-              ln -sf /usr/bin/$tool-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/$tool
-            done
-            export PATH="$GITHUB_WORKSPACE/sys_bin:$PATH"
-
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-
-            # Шаг 1: Генерируем дефконфиг
-            echo "📝 Генерирую дефконфиг..."
-            make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
-
-            # Шаг 2: Компиляция дерева устройств с игнорированием ошибок чужих платформ
-            echo "🎯 Сборка DTBS..."
-            make -i -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CC="ccache clang" HOSTCC="ccache clang" \
-              AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
-              dtbs || true
-
-            # Шаг 3: Основная сборка образа ядра (all)
-            echo "🚀 Запуск финальной компиляции ядра..."
-            make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CC="ccache clang" HOSTCC="ccache clang" \
-              AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
-              HOSTAR="llvm-ar" HOSTNM="llvm-nm" HOSTLD="ld.lld" \
-              RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
-              PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-              KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" \
-              all
-
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
-            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-            export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install -y libelf-dev
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
-
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
-            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-            export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install -y libelf-dev
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
-            
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
-            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-            export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install -y libelf-dev
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
-          fi
-          
-          ccache -s
-          echo "✅ Процесс сборки завершен!"
+          # 🔥 ТОТАЛЬНЫЙ ОБХОД БЛОКИРОВОК КЕРНЕ
