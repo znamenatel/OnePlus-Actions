@@ -630,12 +630,21 @@ jobs:
           # Переходим в корень рабочего пространства
           cd $GITHUB_WORKSPACE/kernel_workspace
           
+          # Переменная для устройства
+          TARGET_DEVICE="${{ github.event.inputs.FEIL }}"
+          
+          # 🔥 Хитрость: если собираем для gt5pro, перенаправляем Bazel на общую цель target-дерева
+          if [ "$TARGET_DEVICE" = "gt5pro" ]; then
+            echo "🔄 Обнаружен Realme GT5 Pro. Подменяю компиляционную цель Bazel на базовую соплатформенную: oneplus_12_b"
+            TARGET_DEVICE="oneplus_12_b"
+          fi
+          
           if [ -f "./kernel_platform/build_with_bazel.py" ]; then
             echo "✅ Скрипт сборки Bazel найден."
-            echo "🚀 Запускаю компиляцию для проекта ${{ github.event.inputs.FEIL }} с вариантом сборки: default"
+            echo "🚀 Запускаю компиляцию для проекта: $TARGET_DEVICE с вариантом сборки: default"
             
-            # Передаем два аргумента для флага -t (Модель и Вариант)
-            python3 ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.FEIL }} default
+            # Запуск компиляции с правильным именем, которое поймет Bazel
+            python3 ./kernel_platform/build_with_bazel.py -t $TARGET_DEVICE default
             
           else
             echo "❌ Критическая ошибка: не найден скрипт build_with_bazel.py!"
