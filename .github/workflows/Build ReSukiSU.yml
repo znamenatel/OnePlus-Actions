@@ -324,25 +324,17 @@ jobs:
           echo "⚙️ 正在配置内核选项..."
           echo "📦 启用 KSU 支持..."
 
-          # 🔥 НАСТРОЙКА СКАЧИВАНИЯ: защищенный curl с обходом лимитов и ошибки 429
-          # ВНИМАНИЕ: Замени ссылку ниже на свой оригинальный URL, если он отличается!
-          SCRIPT_URL="https://raw.githubusercontent.com/xiaoxiaoww/ReSukiSU/main/resukisu_setup.bin"
+          # 🔴 ЗАМЕНИ ТЕКСТ В КАВЫЧКАХ НА ССЫЛКУ ИЗ ТВОЕГО ИСХОДНОГО .YML ФАЙЛА
+          SCRIPT_URL="ВСТАВЬ_СЮДА_ОРИГИНАЛЬНУЮ_ССЫЛКУ_НА_resukisu_setup.bin"
 
-          echo "📥 Скачиваю resukisu_setup.bin с обходом блокировок..."
+          echo "📥 Скачиваю resukisu_setup.bin со встроенной защитой от 429..."
           curl -LSs -f \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "$SCRIPT_URL" -o resukisu_setup.bin
 
-          # Проверка на случай, если файл всё равно скачался криво или пустой
-          if [ ! -s resukisu_setup.bin ] || grep -q "Terms of Service" resukisu_setup.bin; then
-            echo "⚠️ Защищенный метод не сработал, пробуем альтернативный curl..."
-            curl -LSs -H "User-Agent: Android-GKI-Builder/1.0" "$SCRIPT_URL" -o resukisu_setup.bin
-          fi
-
-          # Даем права на выполнение и запускаем
+          # Делаем файл исполняемым и запускаем настройку конфигурации
           chmod +x ./resukisu_setup.bin
-          
           echo "🚀 Запуск скрипта настройки ReSukiSU..."
           ./resukisu_setup.bin
       - name: "🔨 Build Kernel | 编译内核"
