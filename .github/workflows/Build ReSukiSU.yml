@@ -630,12 +630,12 @@ jobs:
           # Переходим в корень рабочего пространства
           cd $GITHUB_WORKSPACE/kernel_workspace
           
-          # Проверяем наличие Bazel-скрипта и запускаем компиляцию
           if [ -f "./kernel_platform/build_with_bazel.py" ]; then
-            echo "✅ Обнаружен скрипт сборки Bazel. Запускаю компиляцию для модели ${{ github.event.inputs.FEIL }}..."
+            echo "✅ Скрипт сборки Bazel найден."
+            echo "🚀 Запускаю компиляцию для проекта ${{ github.event.inputs.FEIL }} с вариантом сборки: default"
             
-            # Основная команда сборки современных ядер OnePlus/Realme
-            python3 ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.FEIL }}
+            # Передаем два аргумента для флага -t (Модель и Вариант)
+            python3 ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.FEIL }} default
             
           else
             echo "❌ Критическая ошибка: не найден скрипт build_with_bazel.py!"
