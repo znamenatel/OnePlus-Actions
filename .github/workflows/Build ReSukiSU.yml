@@ -274,81 +274,80 @@ jobs:
           echo "✅ ReSukiSU 配置完成"
       - name: "🔧 Setup Patches | 配置补丁"
         run: |
-          cd kernel_workspace[cite: 1]
-          echo "⬇️ 克隆所需补丁..."[cite: 1]
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then[cite: 1]
-            git clone https://github.com/cctv18/susfs4oki.git -b oki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}[cite: 1]
-          fi[cite: 1]
-          git clone https://github.com/Xiaomichael/kernel_patches.git[cite: 1]
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git[cite: 1]
-          cd kernel_platform[cite: 1]
-          echo "📝 复制补丁文件..."[cite: 1]
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then[cite: 1]
-            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/[cite: 1]
-            cp ../susfs4oki/kernel_patches/fs/* ./common/fs/[cite: 1]
-            cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/[cite: 1]
-          else[cite: 1]
-            cp ../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/[cite: 1]
-          fi[cite: 1]
-          cp ../kernel_patches/zram_patches/001-lz4.patch ./common/[cite: 1]
-          cp ../kernel_patches/zram_patches/lz4armv8.S ./common/lib[cite: 1]
-          cp ../kernel_patches/zram_patches/002-zstd.patch ./common/[cite: 1]
-          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then[cite: 1]
-            if [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then[cite: 1]
-              cp ../kernel_patches/common/unicode_bypass_fix_6.1+.patch ./common/unicode_bypass_fix.patch[cite: 1]
-            elif [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ]; then[cite: 1]
-              cp ../kernel_patches/common/unicode_bypass_fix_6.1-.patch ./common/unicode_bypass_fix.patch[cite: 1]
-            fi[cite: 1]
-          fi[cite: 1]
-          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then[cite: 1]
+          cd kernel_workspace
+          echo "⬇️ 克隆所需补丁..."
+          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+            git clone https://github.com/cctv18/susfs4oki.git -b oki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+          fi
+          git clone https://github.com/Xiaomichael/kernel_patches.git
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git
+          cd kernel_platform
+          echo "📝 复制补丁文件..."
+          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+            cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
+            cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
+          else
+            cp ../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
+          fi
+          cp ../kernel_patches/zram_patches/001-lz4.patch ./common/
+          cp ../kernel_patches/zram_patches/lz4armv8.S ./common/lib
+          cp ../kernel_patches/zram_patches/002-zstd.patch ./common/
+          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
+            if [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
+              cp ../kernel_patches/common/unicode_bypass_fix_6.1+.patch ./common/unicode_bypass_fix.patch
+            elif [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ]; then
+              cp ../kernel_patches/common/unicode_bypass_fix_6.1-.patch ./common/unicode_bypass_fix.patch
+            fi
+          fi
+          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
             # Copy lz4k from ShirkNeko
-            cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux[cite: 1]
-            cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib[cite: 1]
-            cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto[cite: 1]
-            cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/[cite: 1]
-          fi[cite: 1]
-          cd ./common[cite: 1]
-          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then[cite: 1]
-            echo "📦 正在应用Unicode零宽绕过修复补丁..."[cite: 1]
-            patch -p1 < unicode_bypass_fix.patch[cite: 1]
-          fi[cite: 1]
-          if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then[cite: 1]
-            echo "📦 应用lz4补丁..."[cite: 1]
-            git apply -p1 < 001-lz4.patch || true[cite: 1]
+            cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
+            cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
+            cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
+            cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
+          fi
+          cd ./common
+          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
+            echo "📦 正在应用Unicode零宽绕过修复补丁..."
+            patch -p1 < unicode_bypass_fix.patch
+          fi
+          if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
+            echo "📦 应用lz4补丁..."
+            git apply -p1 < 001-lz4.patch || true
             # patch -p1 < 002-zstd.patch || true
-          fi[cite: 1]
-          if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then[cite: 1]
-            echo "📦 应用lz4补丁..."[cite: 1]
-            git apply -p1 < 001-lz4.patch || true[cite: 1]
-          fi[cite: 1]
-          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then[cite: 1]
-            echo "📦 应用lz4kd补丁..."[cite: 1]
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./[cite: 1]
-            patch -p1 -F 3 < lz4kd.patch || true[cite: 1]
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./[cite: 1]
-            patch -p1 -F 3 < lz4k_oplus.patch || true[cite: 1]
-          fi[cite: 1]
+          fi
+          if [ "${{ github.event.inputs.lz4kd }}" = "Off" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.6" ]; then
+            echo "📦 应用lz4补丁..."
+            git apply -p1 < 001-lz4.patch || true
+          fi
+          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
+            echo "📦 应用lz4kd补丁..."
+            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
+            patch -p1 -F 3 < lz4kd.patch || true
+            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
+            patch -p1 -F 3 < lz4k_oplus.patch || true
+          fi
           
-          # 🔥 ИСПРАВЛЕННЫЙ БЛОК ПРИМЕНЕНИЯ SUSFS
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then[cite: 1]
-            echo "📦 应用SUSFS补丁..."[cite: 1]
+          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+            echo "📦 应用SUSFS补丁..."
             patch -p1 -F 3 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
-          else[cite: 1]
-            echo "📦 应用MANUAL_HOOK补丁..."[cite: 1]
-            patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch[cite: 1]
-          fi[cite: 1]
+          else
+            echo "📦 应用MANUAL_HOOK补丁..."
+            patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
+          fi
           
-          echo "🩹 Проверяю и чиню avc_has_perm в hooks.c..."[cite: 1]
-          HOOKS_FILE="security/selinux/hooks.c"[cite: 1]
-          if [ -f "$HOOKS_FILE" ]; then[cite: 1]
-            if grep -q "avc_has_perm(mysid, mysid, SECCLASS_PROCESS," "$HOOKS_FILE"; then[cite: 1]
-              sed -i 's/avc_has_perm(mysid, mysid, SECCLASS_PROCESS,/avc_has_perm(\&selinux_state, mysid, mysid, SECCLASS_PROCESS,/' "$HOOKS_FILE"[cite: 1]
-              echo "✅ hooks.c пофиксен (добавлен &selinux_state)"[cite: 1]
-            else[cite: 1]
-              echo "ℹ️ Проблемная строка не найдена — фикс не нужен"[cite: 1]
-            fi[cite: 1]
-          fi[cite: 1]
-          echo "✅ 所有补丁应用完成"[cite: 1]
+          echo "🩹 Проверяю и чиню avc_has_perm в hooks.c..."
+          HOOKS_FILE="security/selinux/hooks.c"
+          if [ -f "$HOOKS_FILE" ]; then
+            if grep -q "avc_has_perm(mysid, mysid, SECCLASS_PROCESS," "$HOOKS_FILE"; then
+              sed -i 's/avc_has_perm(mysid, mysid, SECCLASS_PROCESS,/avc_has_perm(\&selinux_state, mysid, mysid, SECCLASS_PROCESS,/' "$HOOKS_FILE"
+              echo "✅ hooks.c пофиксен (добавлен &selinux_state)"
+            else
+              echo "ℹ️ Проблемная строка не найдена — фикс не нужен"
+            fi
+          fi
+          echo "✅ 所有补丁应用完成"
       - name: Apply SCHED Patch | 应用风驰补丁
         if: ${{ github.event.inputs.FEIL != 'gt5pro' && false }}
         run: |
