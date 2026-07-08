@@ -320,54 +320,42 @@ jobs:
           fi
       - name: "⚙️ Configure Kernel Options | 配置内核选项"
         run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform || cd $GITHUB_WORKSPACE
           echo "⚙️ 正在配置内核选项..."
           echo "📦 启用 KSU 支持..."
 
-          echo "🧙‍♂️ Запуск автопоиска оригинальной ссылки в истории Git..."
-          
-          # Уходим в корень для работы с git
-          cd $GITHUB_WORKSPACE
-          
-          # Углубляем историю клона, чтобы увидеть прошлые коммиты
-          git fetch --unshallow || true
-          
-          # Находим имя твоего workflow-файла
-          WORKFLOW_FILE=$(find .github/workflows/ -name "*.yml" | head -n 1)
-          
-          # Автоматически вытаскиваем старую ссылку из предыдущего коммита
-          SCRIPT_URL=$(git show HEAD~1:"$WORKFLOW_FILE" 2>/dev/null | grep -oE 'https://[^"'\'']*resukisu_setup\.bin' | head -n 1)
+          echo "🕵️‍♂️ Глобальный поиск оригинального воркфлоу по всему раннеру..."
+          # Ищем любой .yml файл на диске, где прописан resukisu_setup.bin
+          REAL_WORKFLOW=$(find /home/runner/work -name "*.yml" -exec grep -l "resukisu_setup.bin" {} \; | head -n 1)
 
-          # Возвращаемся в рабочую директорию сборки
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-
-          # Если в истории git ссылку не нашли (например, из-за shallow clone), подставляем точную ссылку автора без опечаток
-          if [ -z "$SCRIPT_URL" ]; then
-            echo "ℹ️ Не удалось извлечь ссылку из истории коммитов. Использую проверенную прямую ссылку..."
+          if [ -n "$REAL_WORKFLOW" ]; then
+            echo "✅ Оригинальный файл найден: $REAL_WORKFLOW"
+            # Вырезаем точный URL (всё, что начинается с https:// и до кавычки или пробела)
+            SCRIPT_URL=$(grep -oE 'https://[^" ]*resukisu_setup\.bin' "$REAL_WORKFLOW" | head -n 1)
+            echo "🎯 Успешно извлечён оригинальный URL: $SCRIPT_URL"
+          else
+            echo "⚠️ Автопоиск не удался. Использую жесткую альтернативную ссылку..."
             SCRIPT_URL="https://raw.githubusercontent.com/xiaoxiaow/ReSukiSU/main/resukisu_setup.bin"
           fi
 
-          echo "🎯 Ссылка определена: $SCRIPT_URL"
-          echo "📥 Скачиваю resukisu_setup.bin со встроенной защитой от блокировок..."
-          
+          echo "📥 Скачиваю resukisu_setup.bin с защитой от блокировки 429..."
           curl -LSs -f \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "$SCRIPT_URL" -o resukisu_setup.bin
 
-          # Резервный запрос без заголовков, если у GitHub плохое настроение
+          # Если файл пустой, пробуем скачать напрямую без заголовков
           if [ ! -s resukisu_setup.bin ]; then
-            echo "⚠️ Основной метод дал осечку, пробую прямой скачивание..."
+            echo "⚠️ Первичный метод дал осечку, пробую прямое скачивание..."
             curl -LSs "$SCRIPT_URL" -o resukisu_setup.bin
           fi
 
-          # Финальная проверка файла на валидность
+          # Проверка на валидность скачанного бинарника
           if [ ! -s resukisu_setup.bin ] || grep -q "Terms of Service" resukisu_setup.bin; then
-            echo "❌ КРИТИЧЕСКАЯ ОШИБКА: Файл конфигуратора не был скачан или заблокирован со стороны GitHub."
+            echo "❌ КРИТИЧЕСКАЯ ОШИБКА: Файл конфигуратора не найден или заблокирован GitHub."
             exit 1
           fi
 
-          # Выдаем права и запускаем оригинальный процесс
           chmod +x ./resukisu_setup.bin
           echo "🚀 Запуск скрипта настройки ReSukiSU..."
           ./resukisu_setup.bin
