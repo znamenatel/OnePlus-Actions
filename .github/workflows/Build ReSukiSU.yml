@@ -579,19 +579,16 @@ jobs:
 
       - name: "🔨 Build Kernel | 编译内核"
         run: |
-         echo "🏗️ Начинаю сборку ядра через Bazel..."
-         export KBUILD_BUILD_USER="xiaoxiaow"
-         export KBUILD_BUILD_HOST="xiaoxiaow_build"
-        
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
         
-         echo "🚀 Запускаю сборку с корректным таргетом устройства..."
-         # Меняем непринятый "pineapple" на официальный сборочный таргет ветки
-         python3 ./build_with_bazel.py -t oneplus_12_b default
-        
-         if [ $? -eq 0 ]; then
-          echo "✅ Сборка успешно завершена!"
+         echo "🔍 Шаг 1: Смотрим, какие таргеты зашиты в defconfig.bzl..."
+         if [ -f "drivers/power/oplus/bazel/kleaf-scripts/defconfig.bzl" ]; then
+          grep -C 15 "not support" drivers/power/oplus/bazel/kleaf-scripts/defconfig.bzl || true
          else
-          echo "❌ Ошибка сборки. Проверяй логи компиляции выше."
-          exit 1
-         fi
+          echo "Файл defconfig.bzl не найден по указанному пути"
+         fi    
+         echo "🔍 Шаг 2: Ищем все доступные сборочные цели (_dist) в проекте..."
+         find . -name "BUILD.bazel" | xargs grep -h "_dist" || true
+        
+         echo "❌ Намеренно прерываем билд для анализа логов..."
+         exit 1
