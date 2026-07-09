@@ -448,7 +448,7 @@ jobs:
             cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
-
+          
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
             printenv PYTHON_PATCH_SCRIPT > patch_all.py
             python3 patch_all.py
@@ -460,32 +460,13 @@ jobs:
           else
             patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
           fi
-
-          echo "🩹 Проверяю и чиню avc_has_perm в hooks.c..."
+          
           HOOKS_FILE="security/selinux/hooks.c"
           if [ -f "$HOOKS_FILE" ]; then
             if grep -q "avc_has_perm(mysid, mysid, SECCLASS_PROCESS," "$HOOKS_FILE"; then
               sed -i 's/avc_has_perm(mysid, mysid, SECCLASS_PROCESS,/avc_has_perm(\&selinux_state, mysid, mysid, SECCLASS_PROCESS,/' "$HOOKS_FILE"
-              echo "✅ hooks.c пофиксен (добавлен &selinux_state)"
             fi
           fi
-
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            echo "🔧 Аккуратно внедряю инклуд SUSFS во все файлы, где он используется..."
-            FILES_TO_FIX=$(grep -rlE '\b(susfs_[a-zA-Z_]+|SUSFS_[A-Z_]+)\(' --include="*.c" fs/ security/ 2>/dev/null | xargs grep -L "linux/susfs.h" 2>/dev/null || true)
-            if [ -n "$FILES_TO_FIX" ]; then
-              for f in $FILES_TO_FIX; do
-                LAST_INC=$(grep -n '^#include' "$f" | tail -1 | cut -d: -f1)
-                if [ -n "$LAST_INC" ]; then
-                  sed -i "${LAST_INC}a #include <linux/susfs.h>" "$f"
-                  echo "✅ $f пофиксен (include добавлен после строки $LAST_INC)"
-                fi
-              done
-            else
-              echo "ℹ️ Файлов, требующих фикса, не найдено"
-            fi
-          fi
-
           echo "✅ 所有补丁应用完成"
 
       - name: Apply SCHED Patch | 应用风驰补丁
@@ -598,66 +579,21 @@ jobs:
 
       - name: "🔨 Build Kernel | 编译内核"
         run: |
-          echo "🏗️ Начинаю сборку ядра..."
+          echo "🏗️ Начинаю сборку ядра через Bazel / Kleaf..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
-
-          EXTRA_CFLAGS="-O2 -Wno-error"
-
-          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
-            sudo apt update && sudo apt install -y libelf-dev clang lld llvm ccache
-
-            mkdir -p $GITHUB_WORKSPACE/sys_bin
-            SYS_LLVM_VER=$(clang --version | grep -oE 'version [0-9]+' | awk '{print $2}')
-            for tool in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-strip; do
-              ln -sf /usr/bin/$tool-$SYS_LLVM_VER $GITHUB_WORKSPACE/sys_bin/$tool
-            done
-            export PATH="$GITHUB_WORKSPACE/sys_bin:$PATH"
-
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-
-            echo "📝 Генерирую дефконфиг..."
-            make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
-
-            echo "🎯 Сборка DTBS..."
-            make -i -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CC="ccache clang" HOSTCC="ccache clang" \
-              AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
-              dtbs || true
-
-            echo "🚀 Запуск финальной компиляции ядра..."
-            make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CC="ccache clang" HOSTCC="ccache clang" \
-              AR="llvm-ar" NM="llvm-nm" LD="ld.lld" \
-              HOSTAR="llvm-ar" HOSTNM="llvm-nm" HOSTLD="ld.lld" \
-              RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
-              PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-              KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" \
-              all
-
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
-            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
-            export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install -y libelf-dev
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
-
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
-            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
-            export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install -y libelf-dev  
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
-
-          elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
-            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-            export PATH="/usr/lib/ccache:$PATH"
-            sudo apt install -y libelf-dev
-            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-            make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
+          
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          
+          echo "🚀 Запускаю компиляцию чистой аппаратной цели процессора..."
+          # Запускаем сборку строго без указания второго параметра (default/gki), чтобы не ломать имя цели
+          if python3 ./build_with_bazel.py -t pineapple; then
+            echo "✅ Сборка через базовую цель 'pineapple' успешно завершена!"
+          elif python3 ./build_with_bazel.py -t pineapple_consolidated; then
+            echo "✅ Сборка через консолидированную цель 'pineapple_consolidated' успешно завершена!"
+          else
+            echo "🚨 Обе оригинальные цели завершились ошибкой."
+            exit 1
           fi
-
-          ccache -s
-          echo "✅ Процесс сборки завершен!"
+          
+          echo "🎉 Процесс компиляции полностью завершен, ядро готово!"
