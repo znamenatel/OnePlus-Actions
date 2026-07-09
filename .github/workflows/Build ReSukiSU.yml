@@ -579,21 +579,19 @@ jobs:
 
       - name: "🔨 Build Kernel | 编译内核"
         run: |
-          echo "🏗️ Начинаю сборку ядра через Bazel / Kleaf..."
+          echo "🏗️ Начинаю сборку ядра через Bazel..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
           
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           
-          echo "🚀 Запускаю компиляцию чистой аппаратной цели процессора..."
-          # Запускаем сборку строго без указания второго параметра (default/gki), чтобы не ломать имя цели
-          if python3 ./build_with_bazel.py -t pineapple; then
-            echo "✅ Сборка через базовую цель 'pineapple' успешно завершена!"
-          elif python3 ./build_with_bazel.py -t pineapple_consolidated; then
-            echo "✅ Сборка через консолидированную цель 'pineapple_consolidated' успешно завершена!"
-          else
-            echo "🚨 Обе оригинальные цели завершились ошибкой."
-            exit 1
-          fi
+          echo "🚀 Запускаю принудительную сборку с параметрами pineapple default..."
+          # Скрипт требует два аргумента, подаем их явно
+          python3 ./build_with_bazel.py -t pineapple default
           
-          echo "🎉 Процесс компиляции полностью завершен, ядро готово!"
+          if [ $? -eq 0 ]; then
+            echo "✅ Сборка успешно завершена!"
+          else
+            echo "⚠️ Ошибка сборки. Пробую альтернативный вариант (pineapple_consolidated)..."
+            python3 ./build_with_bazel.py -t pineapple_consolidated default
+          fi
