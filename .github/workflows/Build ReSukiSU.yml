@@ -227,7 +227,7 @@ jobs:
           sudo mv ~/repo /usr/local/bin/repo
           echo "✅ repo工具安装完成"
 
-      - name: "⬇️ Clone Kernel Source | 克隆内核源码"
+      - name: "⬇️ Clone Kernel Source | 克лон内核源码"
         run: |
           mkdir kernel_workspace && cd kernel_workspace
           echo "🌐 正在初始化内核仓库..."
@@ -293,18 +293,17 @@ jobs:
                 new_lines = []
                 skip = False
                 for line in lines:
-                    if (line.startswith("diff --git a/mm/memory.c") or line.startswith("diff --git a/common/mm/memory.c") or
-                        line.startswith("diff --git a/fs/namespace.c") or line.startswith("diff --git a/common/fs/namespace.c") or
-                        line.startswith("diff --git a/fs/stat.c") or line.startswith("diff --git a/common/fs/stat.c") or
-                        line.startswith("diff --git a/fs/proc/task_mmu.c") or line.startswith("diff --git a/common/fs/proc/task_mmu.c")):
-                        skip = True
-                    elif line.startswith("diff --git "):
-                        skip = False
+                    if line.startswith("diff --git "):
+                        # Фулпруф-проверка: если в строке инициализации патча есть целевые файлы, включаем пропуск
+                        if any(x in line for x in ["mm/memory.c", "fs/namespace.c", "fs/stat.c", "fs/proc/task_mmu.c"]):
+                            skip = True
+                        else:
+                            skip = False
                     if not skip:
                         new_lines.append(line)
                 with open(patch_name, "w") as f:
                     f.writelines(new_lines)
-                print("✅ Из файла патча успешно удалены конфликтные секции VFS и Procfs")
+                print("✅ Из файла патча успешно удалены конфликтные секции VFS, Procfs и Namespace")
 
             if os.path.exists("mm/memory.c"):
                 with open("mm/memory.c", "r") as f:
@@ -394,7 +393,7 @@ jobs:
                         "\t\t\tsmap_gather_stats(vma, &mss, last_vma_end);\n"
                         "\t\t\tlast_vma_end = vma->vm_end;\n"
                         "#endif\n"
-                        "\t\}"
+                        "\t}\n"
                     )
                     code, count = re.subn(pattern_mmu, susfs_mmu_block, code)
                     print(f"✅ Файл fs/proc/task_mmu.c изменен напрямую. Замен: {count}")
@@ -448,7 +447,7 @@ jobs:
             cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
-          
+
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
             printenv PYTHON_PATCH_SCRIPT > patch_all.py
             python3 patch_all.py
@@ -460,13 +459,31 @@ jobs:
           else
             patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
           fi
-          
-          HOOKS_FILE="security/selinux/hooks.c"
-          if [ -f "$HOOKS_FILE" ]; then
-            if grep -q "avc_has_perm(mysid, mysid, SECCLASS_PROCESS," "$HOOKS_FILE"; then
-              sed -i 's/avc_has_perm(mysid, mysid, SECCLASS_PROCESS,/avc_has_perm(\&selinux_state, mysid, mysid, SECCLASS_PROCESS,/' "$HOOKS_FILE"
+
+          echo "🩹 Универсально исправляю avc_has_perm во всей папке security/selinux/..."
+          find security/selinux/ -name "*.c" | while read -r file; do
+            if grep -q "avc_has_perm(mysid," "$file"; then
+              sed -i 's/avc_has_perm(mysid,/avc_has_perm(\&selinux_state, mysid,/g' "$file"
+              echo "✅ Фикс avc_has_perm успешно применен к $file"
+            fi
+          done
+
+          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+            echo "🔧 Аккуратно внедрю инклуд SUSFS во все файлы, где он используется..."
+            FILES_TO_FIX=$(grep -rlE '\b(susfs_[a-zA-Z_]+|SUSFS_[A-Z_]+)\(' --include="*.c" fs/ security/ 2>/dev/null | xargs grep -L "linux/susfs.h" 2>/dev/null || true)
+            if [ -n "$FILES_TO_FIX" ]; then
+              for f in $FILES_TO_FIX; do
+                LAST_INC=$(grep -n '^#include' "$f" | tail -1 | cut -d: -f1)
+                if [ -n "$LAST_INC" ]; then
+                  sed -i "${LAST_INC}a #include <linux/susfs.h>" "$f"
+                  echo "✅ $f пофиксен (include добавлен после строки $LAST_INC)"
+                fi
+              done
+            else
+              echo "ℹ️ Файлов, требующих фикса, не найдено"
             fi
           fi
+
           echo "✅ 所有补丁应用完成"
 
       - name: Apply SCHED Patch | 应用风驰补丁
@@ -579,19 +596,31 @@ jobs:
 
       - name: "🔨 Build Kernel | 编译内核"
         run: |
-          echo "🏗️ Начинаю сборку ядра через Bazel..."
+          echo "🏗️ Начинаю сборку ядра..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
-          
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          
-          echo "🚀 Запускаю принудительную сборку с параметрами pineapple default..."
-          # Скрипт требует два аргумента, подаем их явно
-          python3 ./build_with_bazel.py -t pineapple default
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ Сборка успешно завершена!"
+
+          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ] || [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.6" ]; then
+            cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+            echo "🚀 Запускаю сборку через Bazel (Kleaf) для процессора Snapdragon 8 Gen 3..."
+            python3 ./build_with_bazel.py -t pineapple default
+
           else
-            echo "⚠️ Ошибка сборки. Пробую альтернативный вариант (pineapple_consolidated)..."
-            python3 ./build_with_bazel.py -t pineapple_consolidated default
+            EXTRA_CFLAGS="-O2 -Wno-error"
+            if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]; then
+              export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
+              export PATH="/usr/lib/ccache:$PATH"
+              sudo apt install -y libelf-dev
+              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+              make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
+            elif [ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.10" ]; then
+              export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+              export PATH="/usr/lib/ccache:$PATH"
+              sudo apt install -y libelf-dev
+              cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+              make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="$EXTRA_CFLAGS" HOSTCFLAGS="-Wno-error" gki_defconfig all
+            fi
           fi
+
+          ccache -s
+          echo "✅ Процесс сборки завершен!"
