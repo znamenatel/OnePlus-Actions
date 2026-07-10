@@ -172,7 +172,8 @@ jobs:
             import re
             import os
 
-            patch_name = "50_add_susfs_in_gki-android15-6.1.patch"
+            # Имя файла патча изменено на правильное (14 вместо 15)
+            patch_name = "50_add_susfs_in_gki-android14-6.1.patch"
 
             if os.path.exists(patch_name):
                 with open(patch_name, "r") as f:
@@ -289,15 +290,17 @@ jobs:
                     f.write(code)
         run: |
           cd kernel_workspace
+          # Здесь изменена ветка клонирования на gki-android14-6.1
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            git clone https://github.com/cctv18/susfs4oki.git -b gki-android15-6.1
+            git clone https://github.com/cctv18/susfs4oki.git -b gki-android14-6.1
           fi
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
           cd kernel_platform
           
+          # Здесь изменено имя копируемого файла патча
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-android15-6.1.patch ./common/
+            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch ./common/
             cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
             cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
           else
@@ -326,7 +329,8 @@ jobs:
             printenv PYTHON_PATCH_SCRIPT > patch_all.py
             python3 patch_all.py
             rm patch_all.py
-            if ! patch -p1 -F 3 < 50_add_susfs_in_gki-android15-6.1.patch; then
+            # Здесь изменено имя применяемого патча
+            if ! patch -p1 -F 3 < 50_add_susfs_in_gki-android14-6.1.patch; then
               find . -name "*.rej" -exec echo "--- Файл: {} ---" \; -exec cat {} \;
               exit 1
             fi
