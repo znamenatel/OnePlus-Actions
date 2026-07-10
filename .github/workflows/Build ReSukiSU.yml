@@ -9,7 +9,7 @@ on:
         options:
           - 'On'
           - 'Off'
-        default: 'On'
+        default: 'Off'
 
       lz4kd:
         description: "是否启用lz4kd (Включить lz4kd?)"
@@ -65,7 +65,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
       CCACHE_MAXSIZE: 8G
-      CCACHE_DIR: "$HOME/.ccache_gt5pro_ReSukiSU"
+      CCACHE_DIR: "/home/runner/.ccache_gt5pro_ReSukiSU"
 
     steps:
       - name: "⚙️ Setup Cache Env | Настройка окружения кэша"
