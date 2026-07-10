@@ -171,11 +171,14 @@ jobs:
           PYTHON_PATCH_SCRIPT: |
             import re
             import os
+            import glob
 
-            # Имя файла патча изменено на правильное (14 вместо 15)
-            patch_name = "50_add_susfs_in_gki-android14-6.1.patch"
+            # Автоматически находим файл патча по маске, чтобы не зависеть от oki/gki
+            patch_files = glob.glob("50_add_susfs_in_*.patch")
+            patch_name = patch_files[0] if patch_files else "50_add_susfs_in_oki-android14-6.1.patch"
 
             if os.path.exists(patch_name):
+                print(f"📦 Обработка файла патча: {patch_name}")
                 with open(patch_name, "r") as f:
                     lines = f.readlines()
                 new_lines = []
@@ -290,17 +293,17 @@ jobs:
                     f.write(code)
         run: |
           cd kernel_workspace
-          # Здесь изменена ветка клонирования на gki-android14-6.1
+          # Стучимся в ветку oki-android14-6.1
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            git clone https://github.com/cctv18/susfs4oki.git -b gki-android14-6.1
+            git clone https://github.com/cctv18/susfs4oki.git -b oki-android14-6.1
           fi
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
           cd kernel_platform
           
-          # Здесь изменено имя копируемого файла патча
+          # Копируем патч по маске, не привязываясь к точному имени
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch ./common/
+            cp ../susfs4oki/kernel_patches/50_add_susfs_in_*.patch ./common/
             cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
             cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
           else
@@ -329,8 +332,11 @@ jobs:
             printenv PYTHON_PATCH_SCRIPT > patch_all.py
             python3 patch_all.py
             rm patch_all.py
-            # Здесь изменено имя применяемого патча
-            if ! patch -p1 -F 3 < 50_add_susfs_in_gki-android14-6.1.patch; then
+            
+            # Динамически находим скопированный файл патча для применения
+            REAL_PATCH=$(ls common/50_add_susfs_in_*.patch | head -n 1)
+            echo "🔥 Применяю патч: $REAL_PATCH"
+            if ! patch -p1 -F 3 < "$REAL_PATCH"; then
               find . -name "*.rej" -exec echo "--- Файл: {} ---" \; -exec cat {} \;
               exit 1
             fi
@@ -362,59 +368,6 @@ jobs:
           if [ -f "fs/stat.c" ] && ! grep -q "ksu_handle_stat" fs/stat.c; then
             find $GITHUB_WORKSPACE -path "*/KernelSU/kernel/tools/inline_hook_check.mk" -exec sed -i 's/\$(error/\$(warning/g' {} \;
           fi
-
-      - name: "⚙️ Configure Kernel Options | Настройка опций дефконфига"
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
-          curl -L -o resukisu_setup.bin https://github.com/Xiaomichael/OnePlus-Actions/raw/Build/script/resukisu_setup.bin
-          chmod +x resukisu_setup.bin
-          ./resukisu_setup.bin
-          rm -rf ./resukisu_setup.bin
-
-          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
-
-          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$DEFCONFIG"
-          else
-            echo "CONFIG_KSU_SUSFS=n" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG"
-          fi
-
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-
-          if [ "${{ github.event.inputs.bbg }}" == "On" ]; then
-            echo 'CONFIG_BBG=y' >> "$DEFCONFIG"
-            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$DEFCONFIG"
-          fi
-
-          if [ "${{ github.event.inputs.bbr }}" == "On" ]; then
-            echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$DEFCONFIG"
-            echo "CONFIG_TCP_CONG_BBR=y" >> "$DEFCONFIG"
-            echo "CONFIG_NET_SCH_FQ=y" >> "$DEFCONFIG"
-            echo "CONFIG_TCP_CONG_BIC=n" >> "$DEFCONFIG"
-            echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$DEFCONFIG"
-            echo "CONFIG_TCP_CONG_HTCP=n" >> "$DEFCONFIG"
-          fi
-
-          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
-            echo "CONFIG_CRYPTO_LZ4KD=y" >> "$DEFCONFIG"
-            echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> "$DEFCONFIG"
-            echo "CONFIG_ZRAM_WRITEBACK=y" >> "$DEFCONFIG"
-          fi
-
-          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$DEFCONFIG"
-          echo "CONFIG_HEADERS_INSTALL=n" >> "$DEFCONFIG"
-          sed -i 's/check_defconfig//' ./common/build.config.gki
 
       - name: "🔨 Build Kernel | Сборка ядра"
         run: |
