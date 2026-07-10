@@ -588,14 +588,23 @@ jobs:
         run: |
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
         
-         echo "🔍 Шаг 1: Смотрим, какие таргеты зашиты в defconfig.bzl..."
-         if [ -f "drivers/power/oplus/bazel/kleaf-scripts/defconfig.bzl" ]; then
-          grep -C 15 "not support" drivers/power/oplus/bazel/kleaf-scripts/defconfig.bzl || true
+        echo "🔍 Шаг 1: Читаем defconfig.bzl по исправленному пути..."
+         if [ -f "msm-kernel/drivers/power/oplus/bazel/kleaf-scripts/defconfig.bzl" ]; then
+          cat msm-kernel/drivers/power/oplus/bazel/kleaf-scripts/defconfig.bzl
          else
-          echo "Файл defconfig.bzl не найден по указанному пути"
-         fi    
-         echo "🔍 Шаг 2: Ищем все доступные сборочные цели (_dist) в проекте..."
-         find . -name "BUILD.bazel" | xargs grep -h "_dist" || true
+          echo "Файл все еще не найден, ищем точное местоположение:"
+          find . -name "defconfig.bzl"
+         fi
         
-         echo "❌ Намеренно прерываем билд для анализа логов..."
+        echo "🔍 Шаг 2: Смотрим, где объявляются платформы BBK..."
+         find . -name "BUILD.bazel" -o -name "*.bzl" | xargs grep -n "define_msm_platforms" || true
+        
+        echo "🔍 Шаг 3: Запрашиваем у Bazel список вообще ВСЕХ доступных дистрибутивов..."
+         if [ -f "tools/bazel" ]; then
+          ./tools/bazel query "kind(copy_to_dist_dir, //...)" || true
+         else
+          bazel query "kind(copy_to_dist_dir, //...)" || true
+         fi
+        
+         echo "❌ Намеренно прерываем билд для анализа точных таргетов..."
          exit 1
