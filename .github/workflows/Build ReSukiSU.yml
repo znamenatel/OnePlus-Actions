@@ -121,7 +121,6 @@ jobs:
           chmod a+x ~/repo
           sudo mv ~/repo /usr/local/bin/repo
 
-          # Прямая инициализация манифеста под процессор sm8650 и разметку gt5pro
       - name: "⬇️ Clone Kernel Source | Клонирование исходников ядра"
         run: |
           mkdir kernel_workspace && cd kernel_workspace
@@ -291,7 +290,7 @@ jobs:
         run: |
           cd kernel_workspace
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            git clone https://github.com/cctv18/susfs4oki.git -b oki-android15-6.1
+            git clone https://github.com/cctv18/susfs4oki.git -b gki-android15-6.1
           fi
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
@@ -310,17 +309,6 @@ jobs:
           
           if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
             cp ../kernel_patches/common/unicode_bypass_fix_6.1+.patch ./common/unicode_bypass_fix.patch
-          fi
-          
-          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
-            cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
-            cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
-            cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
-          fi
-          
-          cd ./common
-          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
-            patch -p1 < unicode_bypass_fix.patch
           fi
           
           if [ "${{ github.event.inputs.lz4kd }}" = "Off" ]; then
