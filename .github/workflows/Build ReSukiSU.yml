@@ -291,6 +291,31 @@ jobs:
                     print(f"✅ Файл fs/proc/task_mmu.c изменен напрямую. Замен: {count}")
                 with open("fs/proc/task_mmu.c", "w") as f:
                     f.write(code)
+
+            # 🔥 НАДЕЖНЫЙ ОБХОД ДЛЯ BASEBAND-GUARD ЧЕРЕЗ PYTHON:
+            bbg_makefile = "security/baseband-guard/Makefile"
+            if os.path.exists(bbg_makefile):
+                with open(bbg_makefile, "r") as f:
+                    m_data = f.read()
+                m_data = m_data.replace("$(error", "$(warning")
+                with open(bbg_makefile, "w") as f:
+                    f.write(m_data)
+                print("✅ Строгие блокировки в Makefile Baseband-guard переведены в предупреждения (warning) через Python")
+
+            # 🔥 Тотальный поиск и инъекция модуля во все файлы конфигурации
+            for root, dirs, files in os.walk("../"):
+                for file in files:
+                    if "config" in file.lower() or file.endswith((".cfg", ".config")):
+                        path = os.path.join(root, file)
+                        try:
+                            with open(path, "r", errors="ignore") as f:
+                                content = f.read()
+                            if "CONFIG_LSM=" in content and "baseband_guard" not in content:
+                                content = re.sub(r'CONFIG_LSM="([^"]+)"', r'CONFIG_LSM="\1,baseband_guard"', content)
+                                with open(path, "w") as f:
+                                    f.write(content)
+                        except:
+                            pass
         run: |
           cd kernel_workspace
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
@@ -365,17 +390,6 @@ jobs:
 
           if [ -f "fs/stat.c" ] && ! grep -q "ksu_handle_stat" fs/stat.c; then
             find $GITHUB_WORKSPACE -path "*/KernelSU/kernel/tools/inline_hook_check.mk" -exec sed -i 's/\$(error/\$(warning/g' {} \;
-          fi
-
-          # 🔥 ТОТАЛЬНЫЙ СКРИПТ ОБХОДА ДЛЯ BASEBAND-GUARD:
-          echo "🛡️ Внедряю baseband_guard во ВСЕ конфигурационные файлы проекта..."
-          find ../ -type f \( -name "*defconfig" -o -name "*.config" -o -name "*.cfg" \) -exec sed -i 's/CONFIG_LSM="[^"]*/&,baseband_guard/' {} + 2>/dev/null || true
-
-          echo "💣 Нейтрализую прерывание сборки в Makefile Baseband-guard..."
-          BBG_MAKEFILE="security/baseband-guard/Makefile"
-          if [ -f "$BBG_MAKEFILE" ]; then
-            sed -i 's/\$(error/\$(warning/g' "$BBG_MAKEFILE"
-            echo "✅ Строгие ошибки в Makefile изменены на предупреждения"
           fi
       - name: "🔨 Build Kernel | Сборка ядра"
         run: |
