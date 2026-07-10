@@ -236,8 +236,15 @@ jobs:
           else
             repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
           fi
-          echo "🔄 同步代码库(使用$(nproc --all)线程)..."
-          repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync
+          
+          echo "🔄 Синхронизируем исходники с защитой от сбоев сервера (2 потока)..."
+          for i in {1..5}; do
+            repo sync -c -j2 --fail-fast --force-sync --no-clone-bundle --no-tags && break || {
+              echo "⚠️ Сервер CodeLinaro выдал ошибку. Пробую еще раз через 30 секунд (Попытка $i из 5)..."
+              sleep 30
+            }
+          done
+          
           echo "✅ 内核源码克隆完成"
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
