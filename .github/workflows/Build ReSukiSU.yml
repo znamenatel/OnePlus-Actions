@@ -299,7 +299,6 @@ jobs:
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
           
-          # Заходим прямо в директорию исходников ядра common
           cd kernel_platform/common
           
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
@@ -368,6 +367,10 @@ jobs:
             find $GITHUB_WORKSPACE -path "*/KernelSU/kernel/tools/inline_hook_check.mk" -exec sed -i 's/\$(error/\$(warning/g' {} \;
           fi
 
+          # 🔥 НОВОЕ: Автоматическая интеграция baseband_guard в конфигурацию безопасности LSM ядра
+          echo "🛡️ Интегрирую Baseband-guard в список CONFIG_LSM..."
+          find arch/arm64/configs/ -type f -exec sed -i 's/CONFIG_LSM="[^"]*/&,baseband_guard/' {} + 2>/dev/null || true
+          find ../vendor/ -type f -name "*.config" -exec sed -i 's/CONFIG_LSM="[^"]*/&,baseband_guard/' {} + 2>/dev/null || true
       - name: "🔨 Build Kernel | Сборка ядра"
         run: |
           echo "🏗️ Начинаю сборку ядра..."
