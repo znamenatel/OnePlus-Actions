@@ -126,7 +126,7 @@ jobs:
           mkdir kernel_workspace && cd kernel_workspace
           echo "🌐 Инициализация репозитория для gt5pro (sm8650)..."
           repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/sm8650 -m oneplus_12_b.xml --depth=1
-          
+
           echo "🔄 Синхронизация исходников..."
           for i in {1..5}; do
             repo sync -c -j2 --fail-fast --force-sync --no-clone-bundle --no-tags && break || {
@@ -134,10 +134,10 @@ jobs:
               sleep 30
             }
           done
-          
+
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          
+
           echo "🔧 Настройка информации о версии ядра..."
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
           sed -i 's/ -dirty//g' kernel_platform/msm-kernel/scripts/setlocalversion
@@ -145,7 +145,7 @@ jobs:
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/common/scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/msm-kernel/scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/external/dtc/scripts/setlocalversion
-          
+
           sed -i '$s|echo "\$res"|echo "-android15-oki-xiaoxiaow"|' kernel_platform/common/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "-android15-oki-xiaoxiaow"|' kernel_platform/msm-kernel/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "-android15-oki-xiaoxiaow"|' kernel_platform/external/dtc/scripts/setlocalversion
@@ -298,9 +298,9 @@ jobs:
           fi
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-          
+
           cd kernel_platform/common
-          
+
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
             cp ../../susfs4oki/kernel_patches/50_add_susfs_in_*.patch ./
             cp ../../susfs4oki/kernel_patches/fs/* ./fs/
@@ -309,22 +309,22 @@ jobs:
             cp ../../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./
           fi
           cp ../../kernel_patches/zram_patches/001-lz4.patch ./
-          
+
           # Фикс путей LZ4
           cp ../../kernel_patches/zram_patches/lz4armv8.S ./lib/
           mkdir -p ./lib/lz4/lz4armv8
           cp ../../kernel_patches/zram_patches/lz4armv8.S ./lib/lz4/lz4armv8/
-          
+
           cp ../../kernel_patches/zram_patches/002-zstd.patch ./
-          
+
           if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
             cp ../../kernel_patches/common/unicode_bypass_fix_6.1+.patch ./unicode_bypass_fix.patch
           fi
-          
+
           if [ "${{ github.event.inputs.lz4kd }}" = "Off" ]; then
             patch -p1 -F 3 < 001-lz4.patch || true
           fi
-          
+
           if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
             cp ../../SukiSU_patch/other/zram/zram_patch/6.1/lz4kd.patch ./
             patch -p1 -F 3 < lz4kd.patch || true
@@ -336,7 +336,7 @@ jobs:
             printenv PYTHON_PATCH_SCRIPT > patch_all.py
             python3 patch_all.py
             rm patch_all.py
-            
+
             REAL_PATCH=$(ls 50_add_susfs_in_*.patch | head -n 1)
             echo "🔥 Применяю патч: $REAL_PATCH"
             if ! patch -p1 -F 3 < "$REAL_PATCH"; then
@@ -388,10 +388,10 @@ jobs:
                           print(f"✅ Прерывание сборки отключено в: {path}")
           '
 
-          # ⚙️ ТОТАЛЬНЫЙ ИНЪЕКЦИОННЫЙ БЛОК ДЛЯ ВСЕХ CONFIG-ФАЙЛОВ
-          echo "⚙️ Прописываю опции во ВСЕ конфигурационные файлы (включая вендорные фрагменты)..."
+          # ⚙️ ИНЪЕКЦИЯ В КОНФИГ-ФАЙЛЫ
+          echo "⚙️ Прописываю опции во все дефконфиги..."
           ALL_CONFIGS=$(find arch/arm64/configs/ -type f \( -name "gki_defconfig" -o -name "*.config" -o -name "*_defconfig" \))
-          
+
           for CONF in $ALL_CONFIGS; do
             if [ "${{ github.event.inputs.bbg }}" == "On" ]; then
               echo 'CONFIG_BBG=y' >> "$CONF"
@@ -432,30 +432,60 @@ jobs:
             echo "CONFIG_HEADERS_INSTALL=n" >> "$CONF"
           done
 
-          # 💎 ЖЕСТКИЙ ФОРС СБОРКИ SUSFS В MAKEFILE (ОБХОД ОШИБОК ЛИНКОВКИ)
+          # 🛡️ 👑 УЛЬТИМАТИВНЫЙ ОБХОД ОГРАНИЧЕНИЙ OPLUS ЧЕРЕЗ KCONFIG.H
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            echo "💎 Принудительно вшиваю susfs.o в fs/Makefile..."
+            echo "🛡️ Глобально форсирую макросы SUSFS на уровне препроцессора ядра..."
+            cat << 'EOF' >> include/linux/kconfig.h
+
+          /* Forced SUSFS compilation flags by GitHub Actions Workflow */
+          #undef CONFIG_KSU_SUSFS
+          #define CONFIG_KSU_SUSFS 1
+          #undef CONFIG_KSU_SUSFS_SUS_PATH
+          #define CONFIG_KSU_SUSFS_SUS_PATH 1
+          #undef CONFIG_KSU_SUSFS_SUS_MOUNT
+          #define CONFIG_KSU_SUSFS_SUS_MOUNT 1
+          #undef CONFIG_KSU_SUSFS_SUS_KSTAT
+          #define CONFIG_KSU_SUSFS_SUS_KSTAT 1
+          #undef CONFIG_KSU_SUSFS_SPOOF_UNAME
+          #define CONFIG_KSU_SUSFS_SPOOF_UNAME 1
+          #undef CONFIG_KSU_SUSFS_ENABLE_LOG
+          #define CONFIG_KSU_SUSFS_ENABLE_LOG 1
+          #undef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+          #define CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS 1
+          #undef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+          #define CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG 1
+          #undef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+          #define CONFIG_KSU_SUSFS_OPEN_REDIRECT 1
+          #undef CONFIG_KSU_SUSFS_SUS_MAP
+          #define CONFIG_KSU_SUSFS_SUS_MAP 1
+          EOF
+          fi
+
+          # 💎 ЖЕСТКИЙ ФОРС СБОРКИ SUSFS В MAKEFILE
+          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+            echo "💎 Принудительно вшиваю susfs.o в список сборки fs/Makefile..."
             sed -i 's/obj-\$(CONFIG_KSU_SUSFS) += susfs.o//g' fs/Makefile 2>/dev/null || true
             echo "" >> fs/Makefile
             echo "obj-y += susfs.o" >> fs/Makefile
           fi
 
           sed -i 's/check_defconfig//' ./build.config.gki
+
       - name: "🔨 Build Kernel | Сборка ядра"
         run: |
           echo "🏗️ Начинаю сборку ядра..."
           export KBUILD_BUILD_USER="xiaoxiaow"
           export KBUILD_BUILD_HOST="xiaoxiaow_build"
-          
+
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
           export PATH="/usr/lib/ccache:$PATH"
-          
+
           sudo apt install -y libelf-dev
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
-          
+
           echo "📝 Шаг 1: Конфигурация ядра (Без параллельных потоков)..."
           make LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" O=out gki_defconfig
-          
+
           echo "🚀 Шаг 2: Компиляция (Все доступные ядра)..."
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS="-O2 -Wno-error" HOSTCFLAGS="-Wno-error" all
 
