@@ -402,6 +402,47 @@ jobs:
                           pass
           print("✅ Инъекция в CONFIG_LSM успешно завершена во всех найденных конфигурациях ядра")
           '
+
+          echo "⚙️ Дописываю обязательные опции в defconfig..."
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+
+          if [ "${{ github.event.inputs.bbg }}" == "On" ]; then
+            echo 'CONFIG_BBG=y' >> "$DEFCONFIG"
+            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$DEFCONFIG"
+          fi
+
+          if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
+            echo 'CONFIG_KSU_SUSFS=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_SUS_PATH=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_SUS_MOUNT=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_SUS_KSTAT=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_SPOOF_UNAME=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_ENABLE_LOG=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_OPEN_REDIRECT=y' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_SUSFS_SUS_MAP=y' >> "$DEFCONFIG"
+          else
+            echo 'CONFIG_KSU_SUSFS=n' >> "$DEFCONFIG"
+            echo 'CONFIG_KSU_MANUAL_HOOK=y' >> "$DEFCONFIG"
+          fi
+
+          if [ "${{ github.event.inputs.bbr }}" == "On" ]; then
+            echo 'CONFIG_TCP_CONG_ADVANCED=y' >> "$DEFCONFIG"
+            echo 'CONFIG_TCP_CONG_BBR=y' >> "$DEFCONFIG"
+            echo 'CONFIG_NET_SCH_FQ=y' >> "$DEFCONFIG"
+          fi
+
+          if [ "${{ github.event.inputs.lz4kd }}" == "On" ]; then
+            echo 'CONFIG_CRYPTO_LZ4KD=y' >> "$DEFCONFIG"
+            echo 'CONFIG_CRYPTO_LZ4K_OPLUS=y' >> "$DEFCONFIG"
+            echo 'CONFIG_ZRAM_WRITEBACK=y' >> "$DEFCONFIG"
+          fi
+
+          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$DEFCONFIG"
+          echo "CONFIG_HEADERS_INSTALL=n" >> "$DEFCONFIG"
+          sed -i 's/check_defconfig//' ./build.config.gki
+
       - name: "🔨 Build Kernel | Сборка ядра"
         run: |
           echo "🏗️ Начинаю сборку ядра..."
